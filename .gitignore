@@ -1,0 +1,38 @@
+# Compiled binaries
+server/hermes-server
+controller/hermes-controller
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Rust
+gateway/target/
+
+# Node.js
+server/web/node_modules/
+server/web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config files with secrets (use *.example as templates)
+server/config.yaml
+controller/config.yaml
+gateway/config.toml
+gateway/config-local.toml
+
+# Coverage reports
+*.out
+coverage.html

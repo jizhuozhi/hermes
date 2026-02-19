@@ -1,0 +1,184 @@
+services:
+  # ── Infrastructure ──────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hermes
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.17
+    environment:
+      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    ports:
+      - "2379:2379"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  consul:
+    image: hashicorp/consul:1.16
+    ports:
+      - "8500:8500"
+    command: agent -dev -client=0.0.0.0
+    healthcheck:
+      test: ["CMD", "consul", "info"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── OIDC Provider (Dex) ────────────────────────
+  #
+  # Lightweight OIDC IdP with a static password user for local dev.
+  # Login: admin@hermes.local / admin
+
+  dex:
+    image: dexidp/dex:v2.39.1
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex.docker.yaml:/etc/dex/config.docker.yaml:ro
+    command: ["dex", "serve", "/etc/dex/config.docker.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5556/dex/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Application ─────────────────────────────────
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "9080:9080"
+    environment:
+      HERMES_POSTGRES_DSN: "postgres://postgres:postgres@postgres:5432/hermes?sslmode=disable"
+      OIDC_ENABLED: "true"
+      OIDC_ISSUER: "http://dex:5556/dex"
+      OIDC_CLIENT_ID: "hermes"
+      OIDC_CLIENT_SECRET: "hermes-secret"
+      HERMES_INITIAL_ADMIN_USERS: "admin@hermes.local"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dex:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9080/api/auth/config"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Init: Bootstrap controller credentials ─────
+  #
+  # Runs once after server is healthy. In bootstrap mode (no credentials yet)
+  # it creates an HMAC credential for the controller and writes AK/SK to a
+  # shared volume so the controller container can pick them up.
+
+  init:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # If credentials were already provisioned, skip.
+        if [ -f /shared/controller_ak ]; then
+          echo "init: credentials already exist, skipping"
+          exit 0
+        fi
+        echo "init: creating controller credential via bootstrap API..."
+        RESP=$$(wget -qO- --header='Content-Type: application/json' \
+          --post-data='{"description":"controller (auto-provisioned)","scopes":["config:read","config:watch","status:write","status:read"]}' \
+          http://server:9080/api/v1/credentials 2>&1) || {
+            echo "init: bootstrap credential creation failed (auth may already be active)"
+            echo "init: if this is a fresh install, ensure no credentials exist yet"
+            exit 1
+          }
+        AK=$$(echo "$$RESP" | sed -n 's/.*"access_key":"\([^"]*\)".*/\1/p')
+        SK=$$(echo "$$RESP" | sed -n 's/.*"secret_key":"\([^"]*\)".*/\1/p')
+        if [ -z "$$AK" ] || [ -z "$$SK" ]; then
+          echo "init: failed to parse AK/SK from response: $$RESP"
+          exit 1
+        fi
+        echo "$$AK" > /shared/controller_ak
+        echo "$$SK" > /shared/controller_sk
+        echo "init: controller credential created (AK=$$AK)"
+    volumes:
+      - shared-credentials:/shared
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: "no"
+
+  controller:
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "controller: waiting for credentials..."
+        for i in $$(seq 1 60); do
+          if [ -f /shared/controller_ak ] && [ -f /shared/controller_sk ]; then
+            break
+          fi
+          sleep 1
+        done
+        if [ ! -f /shared/controller_ak ]; then
+          echo "controller: no credentials found after 60s, starting without auth"
+          exec hermes-controller -config /etc/hermes/config.yaml
+        fi
+        export HERMES_AUTH_ACCESS_KEY=$$(cat /shared/controller_ak)
+        export HERMES_AUTH_SECRET_KEY=$$(cat /shared/controller_sk)
+        echo "controller: starting with HMAC credentials (AK=$${HERMES_AUTH_ACCESS_KEY})"
+        exec hermes-controller -config /etc/hermes/config.yaml
+    environment:
+      HERMES_CONTROLPLANE_URL: "http://server:9080"
+      HERMES_ETCD_ENDPOINTS: "http://etcd:2379"
+    volumes:
+      - shared-credentials:/shared:ro
+    depends_on:
+      server:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "9091:9091"
+    environment:
+      HERMES_ETCD_ENDPOINTS: "http://etcd:2379"
+      HERMES_CONSUL_ADDRESS: "http://consul:8500"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  shared-credentials:

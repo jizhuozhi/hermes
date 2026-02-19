@@ -1,0 +1,195 @@
+package handler
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/jizhuozhi/hermes/server/internal/model"
+	"github.com/jizhuozhi/hermes/server/internal/store"
+
+	"go.uber.org/zap"
+)
+
+type ClusterHandler struct {
+	store  store.Store
+	logger *zap.SugaredLogger
+}
+
+func NewClusterHandler(s store.Store, logger *zap.SugaredLogger) *ClusterHandler {
+	return &ClusterHandler{store: s, logger: logger}
+}
+
+func (h *ClusterHandler) ListClusters(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	clusters, err := h.store.ListClusters(r.Context(), ns)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"clusters": clusters, "total": len(clusters)})
+}
+
+func (h *ClusterHandler) GetCluster(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+	cluster, err := h.store.GetCluster(r.Context(), ns, name)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if cluster == nil {
+		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("cluster %q not found", name))
+		return
+	}
+	JSON(w, http.StatusOK, cluster)
+}
+
+func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	var cluster model.ClusterConfig
+	if err := DecodeJSON(r, &cluster); err != nil {
+		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
+		return
+	}
+
+	if cluster.Name == "" {
+		ErrJSON(w, http.StatusBadRequest, "cluster name is required")
+		return
+	}
+
+	if errs := model.ValidateCluster(&cluster); len(errs) > 0 {
+		JSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+		return
+	}
+
+	existing, err := h.store.GetCluster(r.Context(), ns, cluster.Name)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing != nil {
+		ErrJSON(w, http.StatusConflict, fmt.Sprintf("cluster %q already exists", cluster.Name))
+		return
+	}
+
+	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "create", Operator(r))
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.logger.Infof("cluster created: %s (ns=%s), version=%d", cluster.Name, ns, ver)
+	JSON(w, http.StatusCreated, map[string]any{"version": ver, "cluster": cluster})
+}
+
+func (h *ClusterHandler) UpdateCluster(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+
+	var cluster model.ClusterConfig
+	if err := DecodeJSON(r, &cluster); err != nil {
+		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
+		return
+	}
+
+	existing, err := h.store.GetCluster(r.Context(), ns, name)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing == nil {
+		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("cluster %q not found", name))
+		return
+	}
+
+	cluster.Name = name
+
+	if errs := model.ValidateCluster(&cluster); len(errs) > 0 {
+		JSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
+		return
+	}
+
+	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "update", Operator(r))
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.logger.Infof("cluster updated: %s (ns=%s), version=%d", name, ns, ver)
+	JSON(w, http.StatusOK, map[string]any{"version": ver, "cluster": cluster})
+}
+
+func (h *ClusterHandler) DeleteCluster(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+
+	ver, err := h.store.DeleteCluster(r.Context(), ns, name, Operator(r))
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.logger.Infof("cluster deleted: %s (ns=%s), version=%d", name, ns, ver)
+	JSON(w, http.StatusOK, map[string]any{"version": ver})
+}
+
+// ── Per-cluster history & rollback ───────────────
+
+func (h *ClusterHandler) ListClusterHistory(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+	history, err := h.store.GetClusterHistory(r.Context(), ns, name)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, map[string]any{"history": history, "total": len(history)})
+}
+
+func (h *ClusterHandler) GetClusterVersion(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+	versionStr := r.PathValue("version")
+	version, err := strconv.ParseInt(versionStr, 10, 64)
+	if err != nil {
+		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid version: %v", err))
+		return
+	}
+
+	entry, err := h.store.GetClusterVersion(r.Context(), ns, name, version)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if entry == nil {
+		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("cluster %q version %d not found", name, version))
+		return
+	}
+
+	JSON(w, http.StatusOK, entry)
+}
+
+func (h *ClusterHandler) RollbackCluster(w http.ResponseWriter, r *http.Request) {
+	ns := NamespaceFromContext(r.Context())
+	name := r.PathValue("name")
+	versionStr := r.PathValue("version")
+	version, err := strconv.ParseInt(versionStr, 10, 64)
+	if err != nil {
+		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid version: %v", err))
+		return
+	}
+
+	newVersion, err := h.store.RollbackCluster(r.Context(), ns, name, version, Operator(r))
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.logger.Infof("cluster %s (ns=%s) rollback to version %d, new version=%d", name, ns, version, newVersion)
+	JSON(w, http.StatusOK, map[string]any{
+		"name":           name,
+		"rolled_back_to": version,
+		"new_version":    newVersion,
+	})
+}

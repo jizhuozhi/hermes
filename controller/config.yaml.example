@@ -1,0 +1,21 @@
+controlplane:
+  url: "http://127.0.0.1:9080"
+  poll_interval: 5
+  reconcile_interval: 60  # seconds, periodic full reconciliation
+  namespace: "default"  # namespace to pull config from (X-Hermes-Namespace header)
+
+etcd:
+  endpoints:
+    - "http://127.0.0.1:2379"
+  domain_prefix: "/hermes/domains"
+  cluster_prefix: "/hermes/clusters"
+  instance_prefix: "/hermes/instances"
+  # username: ""
+  # password: ""
+
+# HMAC-SHA256 authentication to the control plane.
+# Created via POST /api/v1/credentials in the web UI.
+# Can also be set via HERMES_AUTH_ACCESS_KEY / HERMES_AUTH_SECRET_KEY env vars.
+# auth:
+#   access_key: ""
+#   secret_key: ""

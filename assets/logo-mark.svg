@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-label="Hermes logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.6" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <g transform="translate(128,130)" stroke="#FFF" fill="none">
+
+    <!-- Staff -->
+    <line x1="0" y1="-90" x2="0" y2="90" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="0" cy="-93" r="5.5" fill="#FFF" stroke="none"/>
+    <line x1="-9" y1="90" x2="9" y2="90" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- Left snake: 3 wraps then neck rises to head -->
+    <path d="M0,82 C-18,74 -18,62 0,54 C18,46 18,34 0,26 C-18,18 -18,6 0,-2 C18,-10 18,-22 0,-30
+             C-10,-34 -16,-40 -18,-48 C-20,-56 -18,-64 -14,-70 C-10,-76 -12,-82 -18,-84"
+          stroke-width="4" stroke-linecap="round"/>
+    <ellipse cx="-22" cy="-84" rx="5" ry="3.2" fill="#FFF" stroke="none"/>
+    <circle cx="-24" cy="-84.5" r="1" fill="url(#bg)" stroke="none"/>
+
+    <!-- Right snake (mirrored) -->
+    <path d="M0,82 C18,74 18,62 0,54 C-18,46 -18,34 0,26 C18,18 18,6 0,-2 C-18,-10 -18,-22 0,-30
+             C10,-34 16,-40 18,-48 C20,-56 18,-64 14,-70 C10,-76 12,-82 18,-84"
+          stroke-width="4" stroke-linecap="round"/>
+    <ellipse cx="22" cy="-84" rx="5" ry="3.2" fill="#FFF" stroke="none"/>
+    <circle cx="24" cy="-84.5" r="1" fill="url(#bg)" stroke="none"/>
+
+    <!-- Wings: fan from where necks diverge, tips reach above snake heads -->
+    <path d="M-5,-56 C-22,-72 -44,-84 -64,-88 C-62,-84 -40,-70 -8,-56z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M-5,-54 C-20,-68 -40,-78 -60,-80 C-58,-76 -38,-66 -7,-54z" fill="#FFF" stroke="none" opacity="0.85"/>
+    <path d="M-5,-52 C-18,-64 -36,-72 -54,-74 C-52,-70 -34,-62 -6,-50z" fill="#FFF" stroke="none" opacity="0.75"/>
+    <path d="M-4,-48 C-14,-58 -30,-64 -46,-64 C-44,-60 -30,-56 -6,-48z" fill="#FFF" stroke="none" opacity="0.63"/>
+    <path d="M-4,-44 C-12,-52 -24,-56 -38,-54 C-36,-50 -24,-48 -5,-44z" fill="#FFF" stroke="none" opacity="0.5"/>
+    <path d="M-4,-40 C-10,-46 -20,-48 -30,-46 C-28,-44 -20,-42 -4,-40z" fill="#FFF" stroke="none" opacity="0.38"/>
+
+    <path d="M5,-56 C22,-72 44,-84 64,-88 C62,-84 40,-70 8,-56z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M5,-54 C20,-68 40,-78 60,-80 C58,-76 38,-66 7,-54z" fill="#FFF" stroke="none" opacity="0.85"/>
+    <path d="M5,-52 C18,-64 36,-72 54,-74 C52,-70 34,-62 6,-50z" fill="#FFF" stroke="none" opacity="0.75"/>
+    <path d="M4,-48 C14,-58 30,-64 46,-64 C44,-60 30,-56 6,-48z" fill="#FFF" stroke="none" opacity="0.63"/>
+    <path d="M4,-44 C12,-52 24,-56 38,-54 C36,-50 24,-48 5,-44z" fill="#FFF" stroke="none" opacity="0.5"/>
+    <path d="M4,-40 C10,-46 20,-48 30,-46 C28,-44 20,-42 4,-40z" fill="#FFF" stroke="none" opacity="0.38"/>
+  </g>
+</svg>

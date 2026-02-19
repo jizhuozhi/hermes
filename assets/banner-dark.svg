@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" fill="none" role="img" aria-label="Hermes banner">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="340" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.6" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="accentIcon" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.6" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="16" fill="#0F172A"/>
+  <path d="M0 16C0 7.2 7.2 0 16 0h304c22 0 22 300 0 300H16C7.2 300 0 292.8 0 284z" fill="url(#accent)"/>
+
+  <!-- Caduceus -->
+  <g transform="translate(165,150)" stroke="#FFF" fill="none">
+    <line x1="0" y1="-104" x2="0" y2="104" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="0" cy="-108" r="6.5" fill="#FFF" stroke="none"/>
+    <line x1="-10" y1="104" x2="10" y2="104" stroke-width="3.5" stroke-linecap="round"/>
+
+    <path d="M0,96 C-22,86 -22,72 0,62 C22,52 22,38 0,28 C-22,18 -22,4 0,-6 C22,-16 22,-30 0,-38
+             C-12,-42 -20,-50 -22,-58 C-24,-66 -20,-76 -16,-84 C-12,-90 -14,-96 -22,-98"
+          stroke-width="4.5" stroke-linecap="round"/>
+    <ellipse cx="-26.5" cy="-98" rx="6" ry="3.5" fill="#FFF" stroke="none"/>
+    <circle cx="-29" cy="-98.5" r="1.2" fill="url(#accentIcon)" stroke="none"/>
+
+    <path d="M0,96 C22,86 22,72 0,62 C-22,52 -22,38 0,28 C22,18 22,4 0,-6 C-22,-16 -22,-30 0,-38
+             C12,-42 20,-50 22,-58 C24,-66 20,-76 16,-84 C12,-90 14,-96 22,-98"
+          stroke-width="4.5" stroke-linecap="round"/>
+    <ellipse cx="26.5" cy="-98" rx="6" ry="3.5" fill="#FFF" stroke="none"/>
+    <circle cx="29" cy="-98.5" r="1.2" fill="url(#accentIcon)" stroke="none"/>
+
+    <path d="M-6,-66 C-26,-84 -52,-98 -76,-102 C-74,-98 -48,-82 -10,-66z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M-6,-64 C-24,-80 -48,-92 -72,-94 C-70,-90 -46,-78 -9,-64z" fill="#FFF" stroke="none" opacity="0.85"/>
+    <path d="M-6,-62 C-22,-76 -42,-86 -64,-86 C-62,-82 -40,-72 -8,-60z" fill="#FFF" stroke="none" opacity="0.75"/>
+    <path d="M-5,-58 C-18,-70 -36,-76 -54,-76 C-52,-72 -36,-66 -7,-56z" fill="#FFF" stroke="none" opacity="0.63"/>
+    <path d="M-5,-54 C-14,-62 -28,-66 -44,-64 C-42,-60 -28,-56 -6,-52z" fill="#FFF" stroke="none" opacity="0.5"/>
+    <path d="M-4,-50 C-12,-56 -22,-58 -34,-56 C-32,-52 -22,-50 -5,-48z" fill="#FFF" stroke="none" opacity="0.38"/>
+
+    <path d="M6,-66 C26,-84 52,-98 76,-102 C74,-98 48,-82 10,-66z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M6,-64 C24,-80 48,-92 72,-94 C70,-90 46,-78 9,-64z" fill="#FFF" stroke="none" opacity="0.85"/>
+    <path d="M6,-62 C22,-76 42,-86 64,-86 C62,-82 40,-72 8,-60z" fill="#FFF" stroke="none" opacity="0.75"/>
+    <path d="M5,-58 C18,-70 36,-76 54,-76 C52,-72 36,-66 7,-56z" fill="#FFF" stroke="none" opacity="0.63"/>
+    <path d="M5,-54 C14,-62 28,-66 44,-64 C42,-60 28,-56 6,-52z" fill="#FFF" stroke="none" opacity="0.5"/>
+    <path d="M4,-50 C12,-56 22,-58 34,-56 C32,-52 22,-50 5,-48z" fill="#FFF" stroke="none" opacity="0.38"/>
+  </g>
+
+  <!--
+    HERMES wordmark: height=130, stroke=14
+    Available width: 1200 - 380(panel+gap) - 60(right margin) = 760
+    Letter widths: H=68 E=56 R=62 M=72 E=56 S=56  total=370
+    Gaps: 5 × 32 = 160, total = 530
+    Start x = 380 + (760-530)/2 = 495 → round to 490
+    Positions: H=0 E=100 R=188 M=282 E=386 S=474
+  -->
+  <g transform="translate(490,85)" fill="#FFF">
+    <!-- H w=68 -->
+    <path d="M0 0h14v55h40V0h14v130h-14V69H14v61H0z"/>
+    <!-- E w=56 @x=100 -->
+    <path d="M100 0h56v14h-42v44h36v14h-36v44h42v14h-56z"/>
+    <!-- R w=62 @x=188 -->
+    <path d="M188 0h36c18 0 32 14 32 32s-14 32-32 32h-8l28 66h-16l-28-66v66h-14zm14 14v38h22c10 0 18-8 18-19s-8-19-18-19z"/>
+    <!-- M w=72 @x=282 -->
+    <path d="M282 0h18l18 56 18-56h18v130h-14V28l-16 50h-12l-16-50v102h-14z"/>
+    <!-- E w=56 @x=386 -->
+    <path d="M386 0h56v14h-42v44h36v14h-36v44h42v14h-56z"/>
+    <!-- S w=60 @x=474 h=130 fixed -->
+    <path d="M474 28c0-16 12-28 30-28s30 12 30 28v6h-14v-6c0-8-7-14-16-14s-16 6-16 14v6c0 8 6 13 16 17l10 4c14 5 22 14 22 28v19c0 16-12 28-30 28s-30-12-30-28v-6h14v6c0 8 7 14 16 14s16-6 16-14v-19c0-8-6-13-16-17l-10-4c-14-5-22-14-22-28z"/>
+  </g>
+
+  <text x="490" y="250" fill="#FFF" fill-opacity="0.45" font-family="ui-sans-serif,system-ui,-apple-system,sans-serif" font-size="16" letter-spacing="3">API GATEWAY · CONTROL PLANE · CONTROLLER</text>
+</svg>

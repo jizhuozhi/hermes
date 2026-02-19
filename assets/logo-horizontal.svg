@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160" fill="none" role="img" aria-label="Hermes horizontal logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="140" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="0.6" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="10" y="10" width="140" height="140" rx="32" fill="url(#bg)"/>
+
+  <!-- Caduceus (contained within 140x140 icon) -->
+  <g transform="translate(80,80)" stroke="#FFF" fill="none">
+    <line x1="0" y1="-50" x2="0" y2="52" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="0" cy="-53" r="3.5" fill="#FFF" stroke="none"/>
+    <line x1="-5" y1="52" x2="5" y2="52" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Left snake -->
+    <path d="M0,48 C-11,43 -11,35 0,30 C11,25 11,17 0,12 C-11,7 -11,-1 0,-6 C11,-11 11,-17 0,-22
+             C-6,-24 -10,-28 -11,-32 C-12,-36 -10,-42 -8,-45 C-6,-48 -7,-50 -11,-51"
+          stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="-14" cy="-51" rx="3.2" ry="2" fill="#FFF" stroke="none"/>
+    <circle cx="-15.5" cy="-51.3" r="0.6" fill="url(#bg)" stroke="none"/>
+
+    <!-- Right snake -->
+    <path d="M0,48 C11,43 11,35 0,30 C-11,25 -11,17 0,12 C11,7 11,-1 0,-6 C-11,-11 -11,-17 0,-22
+             C6,-24 10,-28 11,-32 C12,-36 10,-42 8,-45 C6,-48 7,-50 11,-51"
+          stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="14" cy="-51" rx="3.2" ry="2" fill="#FFF" stroke="none"/>
+    <circle cx="15.5" cy="-51.3" r="0.6" fill="url(#bg)" stroke="none"/>
+
+    <!-- Wings -->
+    <path d="M-3,-30 C-12,-40 -24,-48 -36,-50 C-35,-47 -24,-40 -5,-30z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M-3,-29 C-11,-37 -22,-43 -33,-44 C-32,-41 -22,-37 -4,-28z" fill="#FFF" stroke="none" opacity="0.8"/>
+    <path d="M-2,-27 C-9,-33 -18,-37 -28,-36 C-27,-34 -18,-32 -4,-26z" fill="#FFF" stroke="none" opacity="0.6"/>
+    <path d="M-2,-25 C-7,-30 -14,-32 -22,-30 C-20,-28 -14,-28 -3,-24z" fill="#FFF" stroke="none" opacity="0.4"/>
+
+    <path d="M3,-30 C12,-40 24,-48 36,-50 C35,-47 24,-40 5,-30z" fill="#FFF" stroke="none" opacity="0.95"/>
+    <path d="M3,-29 C11,-37 22,-43 33,-44 C32,-41 22,-37 4,-28z" fill="#FFF" stroke="none" opacity="0.8"/>
+    <path d="M2,-27 C9,-33 18,-37 28,-36 C27,-34 18,-32 4,-26z" fill="#FFF" stroke="none" opacity="0.6"/>
+    <path d="M2,-25 C7,-30 14,-32 22,-30 C20,-28 14,-28 3,-24z" fill="#FFF" stroke="none" opacity="0.4"/>
+  </g>
+
+  <!-- HERMES text: height=90, stroke=10 -->
+  <g transform="translate(185,35)" fill="#0F172A">
+    <!-- H w=48 -->
+    <path d="M0 0h10v38h28V0h10v90h-10V48H10v42H0z"/>
+    <!-- E w=40 @x=72 -->
+    <path d="M72 0h40v10H82v30h26v10H82v30h30v10H72z"/>
+    <!-- R w=44 @x=136 -->
+    <path d="M136 0h26c13 0 23 10 23 23s-10 23-23 23h-6l20 44h-12l-20-44v44h-10zm10 10v26h16c7 0 13-5 13-13s-6-13-13-13z"/>
+    <!-- M w=52 @x=206 -->
+    <path d="M206 0h14l13 40 13-40h14v90h-10V20l-12 36h-10l-12-36v70h-10z"/>
+    <!-- E w=40 @x=278 -->
+    <path d="M278 0h40v10h-30v30h26v10h-26v30h30v10h-40z"/>
+    <!-- S w=44 @x=342, h=90 -->
+    <path d="M342 20c0-11 9-20 22-20s22 9 22 20v4h-10v-4c0-6-5-10-12-10s-12 4-12 10v4c0 6 5 10 12 14l8 2c10 4 16 10 16 20v10c0 11-9 20-22 20s-22-9-22-20v-4h10v4c0 6 5 10 12 10s12-4 12-10v-10c0-6-5-10-12-14l-8-2c-10-4-16-10-16-20z"/>
+  </g>
+</svg>

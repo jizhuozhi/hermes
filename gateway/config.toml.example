@@ -1,0 +1,13 @@
+[consul]
+address = "http://127.0.0.1:8500"
+poll_interval_secs = 10
+
+[etcd]
+endpoints = ["http://127.0.0.1:2379"]
+domain_prefix = "/hermes/domains"
+cluster_prefix = "/hermes/clusters"
+
+[instance_registry]
+enabled = true
+prefix = "/hermes/instances"
+lease_ttl_secs = 15

@@ -1,0 +1,25 @@
+server:
+  listen: "0.0.0.0:9080"
+
+postgres:
+  dsn: "postgres://postgres@localhost:5432/hermes?sslmode=disable"
+
+oidc:
+  enabled: false
+  issuer: "https://your-oidc-provider.example.com/realms/hermes"
+  client_id: "hermes"
+  client_secret: "YOUR_OIDC_CLIENT_SECRET"
+  # initial_admin_users: comma-separated OIDC usernames/emails to seed as super admin on first login.
+  # Only takes effect on the user's FIRST login; subsequent logins never change admin status.
+  # Admins can be managed dynamically via the UI afterwards. Can also be set via HERMES_INITIAL_ADMIN_USERS env var.
+  # initial_admin_users: "alice@example.com,bob"
+
+# HMAC-SHA256 authentication is now managed via the web UI (Settings → Credentials).
+# Create AK/SK pairs in the UI and configure them on controllers.
+
+# grafana:
+#   dashboards:
+#     - name: "Gateway Overview"
+#       url: "https://your-grafana.example.com/d/abc123?orgId=1&kiosk"
+#     - name: "Upstream Health"
+#       url: "https://your-grafana.example.com/d/def456?orgId=1&kiosk"
