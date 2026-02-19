@@ -64,10 +64,12 @@ pub async fn handle_request(
     };
 
     ctx.route_name = route.name.clone();
+    ctx.domain_name = route.domain_name.clone();
     ctx.route = Some(route.clone());
 
     metrics::gauge!(
         "gateway_http_requests_in_flight",
+        "domain" => ctx.domain_name.clone(),
         "route" => ctx.route_name.clone(),
     )
     .increment(1.0);
@@ -105,6 +107,7 @@ pub async fn handle_request(
     };
     let cluster_overridden = selection.overridden;
     let cluster = selection.cluster;
+    ctx.cluster_name = cluster.name().to_owned();
 
     // Apply request-phase header transforms before upstream.
     apply_header_transforms(&route.request_header_ops, &mut req_headers);
@@ -178,10 +181,12 @@ fn phase_route_match(
             );
             metrics::counter!(
                 "gateway_http_requests_total",
+                "domain" => "",
                 "route" => "_no_route",
+                "cluster" => "",
                 "method" => ctx.method.clone(),
                 "status_code" => "404",
-                "upstream_addr" => "",
+                "upstream" => "",
             )
             .increment(1);
             Err(Response::builder()
@@ -234,6 +239,7 @@ fn select_weighted_cluster(
                 );
                 metrics::counter!(
                     "gateway_cluster_override_total",
+                    "domain" => route.domain_name.clone(),
                     "route" => route.name.clone(),
                     "cluster" => override_val.to_owned(),
                 )
@@ -447,7 +453,10 @@ async fn phase_upstream(
                             );
                             metrics::counter!(
                                 "gateway_upstream_retries_total",
+                                "domain" => ctx.domain_name.clone(),
                                 "route" => ctx.route_name.clone(),
+                                "cluster" => ctx.cluster_name.clone(),
+                                "upstream" => upstream_addr.clone(),
                                 "reason" => "status",
                             )
                             .increment(1);
@@ -485,7 +494,10 @@ async fn phase_upstream(
                     );
                     metrics::counter!(
                         "gateway_upstream_retries_total",
+                        "domain" => ctx.domain_name.clone(),
                         "route" => ctx.route_name.clone(),
+                        "cluster" => ctx.cluster_name.clone(),
+                        "upstream" => upstream_addr.clone(),
                         "reason" => "connect_error",
                     )
                     .increment(1);
@@ -521,7 +533,10 @@ async fn phase_upstream(
                     );
                     metrics::counter!(
                         "gateway_upstream_retries_total",
+                        "domain" => ctx.domain_name.clone(),
                         "route" => ctx.route_name.clone(),
+                        "cluster" => ctx.cluster_name.clone(),
+                        "upstream" => upstream_addr.clone(),
                         "reason" => "timeout",
                     )
                     .increment(1);
@@ -588,8 +603,10 @@ fn select_healthy_node(
                     );
                     metrics::counter!(
                         "gateway_circuit_breaker_rejected_total",
+                        "domain" => ctx.domain_name.clone(),
                         "route" => ctx.route_name.clone(),
-                        "upstream_addr" => addr.clone(),
+                        "cluster" => cluster.name().to_owned(),
+                        "upstream" => addr.clone(),
                     )
                     .increment(1);
                     continue;
@@ -649,8 +666,10 @@ fn phase_log(
     {
         metrics::histogram!(
             "gateway_http_response_size_bytes",
+            "domain" => ctx.domain_name.clone(),
             "route" => ctx.route_name.clone(),
-            "upstream_addr" => ctx.upstream_addr.clone(),
+            "cluster" => ctx.cluster_name.clone(),
+            "upstream" => ctx.upstream_addr.clone(),
         )
         .record(cl);
     }

@@ -127,6 +127,7 @@ async fn rate_limit_on_request(
 
         metrics::counter!(
             "gateway_rate_limit_rejected_total",
+            "domain" => ctx.domain_name.clone(),
             "route" => ctx.route_name.clone(),
             "mode" => config.mode.clone(),
         )
@@ -137,6 +138,7 @@ async fn rate_limit_on_request(
 
     metrics::counter!(
         "gateway_rate_limit_allowed_total",
+        "domain" => ctx.domain_name.clone(),
         "route" => ctx.route_name.clone(),
         "mode" => config.mode.clone(),
     )

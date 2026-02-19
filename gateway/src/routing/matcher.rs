@@ -37,9 +37,9 @@ impl RouteTable {
     /// Domains with host `_` contribute to the default fallback tree.
     /// All other hosts are partitioned into exact or wildcard trees.
     pub fn new(domains: &[DomainConfig], instance_count: Option<Arc<AtomicU32>>) -> Self {
-        let mut exact_hosts: HashMap<String, Vec<crate::config::RouteConfig>> = HashMap::new();
-        let mut wildcard_hosts: HashMap<String, Vec<crate::config::RouteConfig>> = HashMap::new();
-        let mut default_routes: Vec<crate::config::RouteConfig> = Vec::new();
+        let mut exact_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> = HashMap::new();
+        let mut wildcard_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> = HashMap::new();
+        let mut default_routes: Vec<(String, crate::config::RouteConfig)> = Vec::new();
         let mut count = 0;
 
         for domain in domains {
@@ -59,17 +59,17 @@ impl RouteTable {
 
                 for host in &domain.hosts {
                     if host == "_" {
-                        default_routes.push(cfg.clone());
+                        default_routes.push((domain.name.clone(), cfg.clone()));
                     } else if host.contains('*') {
                         wildcard_hosts
                             .entry(host.clone())
                             .or_default()
-                            .push(cfg.clone());
+                            .push((domain.name.clone(), cfg.clone()));
                     } else {
                         exact_hosts
                             .entry(host.to_ascii_lowercase())
                             .or_default()
-                            .push(cfg.clone());
+                            .push((domain.name.clone(), cfg.clone()));
                     }
                 }
             }
@@ -79,8 +79,8 @@ impl RouteTable {
             .into_iter()
             .map(|(host, cfgs)| {
                 let mut tree = RadixTree::new(instance_count.clone());
-                for c in cfgs {
-                    tree.insert(c);
+                for (domain_name, c) in cfgs {
+                    tree.insert(c, &domain_name);
                 }
                 (host, tree)
             })
@@ -90,16 +90,16 @@ impl RouteTable {
             .into_iter()
             .map(|(pattern, cfgs)| {
                 let mut tree = RadixTree::new(instance_count.clone());
-                for c in cfgs {
-                    tree.insert(c);
+                for (domain_name, c) in cfgs {
+                    tree.insert(c, &domain_name);
                 }
                 (pattern, tree)
             })
             .collect();
 
         let mut default_tree = RadixTree::new(instance_count);
-        for c in default_routes {
-            default_tree.insert(c);
+        for (domain_name, c) in default_routes {
+            default_tree.insert(c, &domain_name);
         }
 
         tracing::info!("routing: compiled route table, count={}", count);

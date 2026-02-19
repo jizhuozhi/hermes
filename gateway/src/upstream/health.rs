@@ -100,7 +100,20 @@ async fn check_one_node(
         let count = cluster.record_health_check(&node_key);
         if count >= active.healthy_threshold && !cluster.is_node_healthy(&node_key) {
             cluster.mark_node_healthy(&node_key);
+            metrics::gauge!(
+                "gateway_upstream_health_status",
+                "cluster" => cluster_name.to_owned(),
+                "upstream" => node_key.clone(),
+            )
+            .set(1.0);
         }
+        metrics::counter!(
+            "gateway_health_check_total",
+            "cluster" => cluster_name.to_owned(),
+            "upstream" => node_key.clone(),
+            "result" => "success",
+        )
+        .increment(1);
         debug!(
             "health: active: check passed, cluster={}, node={}",
             cluster_name, node_key
@@ -111,11 +124,24 @@ async fn check_one_node(
         let count = cluster.record_health_check(&node_key);
         if count >= active.unhealthy_threshold {
             cluster.mark_node_unhealthy(&node_key);
+            metrics::gauge!(
+                "gateway_upstream_health_status",
+                "cluster" => cluster_name.to_owned(),
+                "upstream" => node_key.clone(),
+            )
+            .set(0.0);
             warn!(
                 "health: active: node marked unhealthy, cluster={}, node={}, consecutive_failures={}",
                 cluster_name, node_key, count
             );
         }
+        metrics::counter!(
+            "gateway_health_check_total",
+            "cluster" => cluster_name.to_owned(),
+            "upstream" => node_key.clone(),
+            "result" => "failure",
+        )
+        .increment(1);
         debug!(
             "health: active: check failed, cluster={}, node={}",
             cluster_name, node_key

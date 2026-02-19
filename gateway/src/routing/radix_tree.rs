@@ -111,6 +111,9 @@ pub enum HeaderOpAction {
 #[derive(Debug)]
 pub struct CompiledRoute {
     pub name: String,
+    /// The domain this route belongs to (e.g. "user-service").
+    /// Carried through for metrics tagging.
+    pub domain_name: String,
     pub uri: String,
     pub priority: i32,
     pub methods: Vec<String>,
@@ -180,7 +183,7 @@ impl RadixTree {
     /// - `/v1/users/list` — exact match
     /// - `/v1/users/*` — prefix wildcard (matches /v1/users and everything below)
     /// - `/*` — catch-all
-    pub fn insert(&mut self, mut config: RouteConfig) {
+    pub fn insert(&mut self, mut config: RouteConfig, domain_name: &str) {
         let uri = config.uri.clone();
         let methods: Vec<String> = config.methods.iter().map(|m| m.to_uppercase()).collect();
         let filters = Arc::new(build_route_filters(&config, self.instance_count.clone()));
@@ -203,6 +206,7 @@ impl RadixTree {
             compile_header_ops(&config.response_header_transforms, &config.name);
         let compiled = Arc::new(CompiledRoute {
             name: config.name,
+            domain_name: domain_name.to_owned(),
             uri: config.uri,
             priority: config.priority,
             methods,

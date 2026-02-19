@@ -209,7 +209,7 @@ async fn poll_consul_services(
 
         metrics::gauge!(
             "gateway_consul_discovered_nodes",
-            "cluster_name" => cd.cluster_name.clone(),
+            "cluster" => cd.cluster_name.clone(),
         )
         .set(nodes.len() as f64);
 

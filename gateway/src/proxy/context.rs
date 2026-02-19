@@ -27,7 +27,9 @@ pub struct RequestContext {
     pub host: String,
     pub uri_path: String,
     pub method: String,
+    pub domain_name: String,
     pub route_name: String,
+    pub cluster_name: String,
     pub upstream_addr: String,
     /// The downstream client IP address (from TCP peer or trusted X-Forwarded-For).
     pub client_ip: IpAddr,
@@ -42,7 +44,9 @@ impl RequestContext {
             host,
             uri_path,
             method,
+            domain_name: String::new(),
             route_name: String::new(),
+            cluster_name: String::new(),
             upstream_addr: String::new(),
             client_ip,
             start: Instant::now(),
@@ -60,23 +64,28 @@ impl RequestContext {
 
         metrics::counter!(
             "gateway_http_requests_total",
+            "domain" => self.domain_name.clone(),
             "route" => self.route_name.clone(),
+            "cluster" => self.cluster_name.clone(),
             "method" => self.method.clone(),
             "status_code" => status_str.to_owned(),
-            "upstream_addr" => self.upstream_addr.clone(),
+            "upstream" => self.upstream_addr.clone(),
         )
         .increment(1);
 
         metrics::histogram!(
             "gateway_http_request_duration_seconds",
+            "domain" => self.domain_name.clone(),
             "route" => self.route_name.clone(),
-            "upstream_addr" => self.upstream_addr.clone(),
+            "cluster" => self.cluster_name.clone(),
+            "upstream" => self.upstream_addr.clone(),
         )
         .record(self.start.elapsed().as_secs_f64());
 
         if !self.route_name.is_empty() {
             metrics::gauge!(
                 "gateway_http_requests_in_flight",
+                "domain" => self.domain_name.clone(),
                 "route" => self.route_name.clone(),
             )
             .decrement(1.0);
@@ -85,8 +94,10 @@ impl RequestContext {
         if let Some(upstream_start) = self.upstream_start {
             metrics::histogram!(
                 "gateway_upstream_request_duration_seconds",
+                "domain" => self.domain_name.clone(),
                 "route" => self.route_name.clone(),
-                "upstream_addr" => self.upstream_addr.clone(),
+                "cluster" => self.cluster_name.clone(),
+                "upstream" => self.upstream_addr.clone(),
             )
             .record(upstream_start.elapsed().as_secs_f64());
         }
@@ -105,31 +116,38 @@ impl RequestContext {
 
         metrics::counter!(
             "gateway_http_requests_total",
+            "domain" => self.domain_name.clone(),
             "route" => self.route_name.clone(),
+            "cluster" => self.cluster_name.clone(),
             "method" => self.method.clone(),
             "status_code" => status_str.to_owned(),
-            "upstream_addr" => self.upstream_addr.clone(),
+            "upstream" => self.upstream_addr.clone(),
         )
         .increment(1);
 
         metrics::histogram!(
             "gateway_http_request_duration_seconds",
+            "domain" => self.domain_name.clone(),
             "route" => self.route_name.clone(),
-            "upstream_addr" => self.upstream_addr.clone(),
+            "cluster" => self.cluster_name.clone(),
+            "upstream" => self.upstream_addr.clone(),
         )
         .record(self.start.elapsed().as_secs_f64());
 
         if let Some(upstream_start) = self.upstream_start {
             metrics::histogram!(
                 "gateway_upstream_request_duration_seconds",
+                "domain" => self.domain_name.clone(),
                 "route" => self.route_name.clone(),
-                "upstream_addr" => self.upstream_addr.clone(),
+                "cluster" => self.cluster_name.clone(),
+                "upstream" => self.upstream_addr.clone(),
             )
             .record(upstream_start.elapsed().as_secs_f64());
         }
 
         metrics::gauge!(
             "gateway_http_requests_in_flight",
+            "domain" => self.domain_name.clone(),
             "route" => self.route_name.clone(),
         )
         .decrement(1.0);
