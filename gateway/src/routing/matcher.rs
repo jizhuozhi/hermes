@@ -37,8 +37,10 @@ impl RouteTable {
     /// Domains with host `_` contribute to the default fallback tree.
     /// All other hosts are partitioned into exact or wildcard trees.
     pub fn new(domains: &[DomainConfig], instance_count: Option<Arc<AtomicU32>>) -> Self {
-        let mut exact_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> = HashMap::new();
-        let mut wildcard_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> = HashMap::new();
+        let mut exact_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> =
+            HashMap::new();
+        let mut wildcard_hosts: HashMap<String, Vec<(String, crate::config::RouteConfig)>> =
+            HashMap::new();
         let mut default_routes: Vec<(String, crate::config::RouteConfig)> = Vec::new();
         let mut count = 0;
 
