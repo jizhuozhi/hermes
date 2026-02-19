@@ -607,8 +607,8 @@ mod tests {
     #[test]
     fn test_exact_match() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("r1", "/v1/users/list"));
-        tree.insert(make_route("r2", "/v1/users/create"));
+        tree.insert(make_route("r1", "/v1/users/list"), "test");
+        tree.insert(make_route("r2", "/v1/users/create"), "test");
 
         match tree.match_uri("/v1/users/list") {
             MatchResult::Exact { exact, .. } => {
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn test_wildcard_match() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("wc", "/v1/users/*"));
+        tree.insert(make_route("wc", "/v1/users/*"), "test");
 
         match tree.match_uri("/v1/users/list") {
             MatchResult::Wildcard(candidates) => {
@@ -650,8 +650,8 @@ mod tests {
     #[test]
     fn test_exact_over_wildcard() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("wc", "/v1/users/*"));
-        tree.insert(make_route("exact", "/v1/users/list"));
+        tree.insert(make_route("wc", "/v1/users/*"), "test");
+        tree.insert(make_route("exact", "/v1/users/list"), "test");
 
         match tree.match_uri("/v1/users/list") {
             MatchResult::Exact { exact, .. } => {
@@ -672,8 +672,8 @@ mod tests {
     #[test]
     fn test_deepest_wildcard_wins() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("shallow", "/v1/*"));
-        tree.insert(make_route("deep", "/v1/users/*"));
+        tree.insert(make_route("shallow", "/v1/*"), "test");
+        tree.insert(make_route("deep", "/v1/users/*"), "test");
 
         match tree.match_uri("/v1/users/list") {
             MatchResult::Wildcard(candidates) => {
@@ -694,8 +694,8 @@ mod tests {
     #[test]
     fn test_catchall() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("catchall", "/*"));
-        tree.insert(make_route("specific", "/v1/users/list"));
+        tree.insert(make_route("catchall", "/*"), "test");
+        tree.insert(make_route("specific", "/v1/users/list"), "test");
 
         match tree.match_uri("/v1/users/list") {
             MatchResult::Exact { exact, .. } => {
@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn test_no_match() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("r1", "/v1/users/list"));
+        tree.insert(make_route("r1", "/v1/users/list"), "test");
 
         match tree.match_uri("/v2/other") {
             MatchResult::None => {}
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn test_root_exact() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("root", "/"));
+        tree.insert(make_route("root", "/"), "test");
 
         match tree.match_uri("/") {
             MatchResult::Exact { exact, .. } => {
@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn test_query_string_ignored() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("r1", "/v1/items"));
+        tree.insert(make_route("r1", "/v1/items"), "test");
 
         match tree.match_uri("/v1/items?foo=bar") {
             MatchResult::Exact { exact, .. } => {
@@ -753,8 +753,8 @@ mod tests {
     fn test_node_splitting() {
         let mut tree = RadixTree::new(None);
         // Insert two routes that share a common prefix but diverge.
-        tree.insert(make_route("abc", "/a/b/c"));
-        tree.insert(make_route("abd", "/a/b/d"));
+        tree.insert(make_route("abc", "/a/b/c"), "test");
+        tree.insert(make_route("abd", "/a/b/d"), "test");
 
         match tree.match_uri("/a/b/c") {
             MatchResult::Exact { exact, .. } => assert_eq!(exact[0].name, "abc"),
@@ -776,9 +776,9 @@ mod tests {
     #[test]
     fn test_wildcard_at_intermediate_and_leaf() {
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("api_all", "/api/*"));
-        tree.insert(make_route("api_v1_all", "/api/v1/*"));
-        tree.insert(make_route("api_v1_users", "/api/v1/users"));
+        tree.insert(make_route("api_all", "/api/*"), "test");
+        tree.insert(make_route("api_v1_all", "/api/v1/*"), "test");
+        tree.insert(make_route("api_v1_users", "/api/v1/users"), "test");
 
         // Exact match
         match tree.match_uri("/api/v1/users") {
@@ -803,7 +803,7 @@ mod tests {
     fn test_wildcard_matches_node_itself() {
         // /v1/* should match /v1 itself (not just /v1/something).
         let mut tree = RadixTree::new(None);
-        tree.insert(make_route("v1_all", "/v1/*"));
+        tree.insert(make_route("v1_all", "/v1/*"), "test");
 
         match tree.match_uri("/v1") {
             MatchResult::Wildcard(candidates) => assert_eq!(candidates[0][0].name, "v1_all"),
