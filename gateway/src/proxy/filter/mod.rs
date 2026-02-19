@@ -1,8 +1,9 @@
+pub mod rate_limit;
+
 use crate::config::RateLimitConfig;
 use crate::config::RouteConfig;
-use crate::middleware::RateLimiter;
 use crate::proxy::context::{BoxBody, RequestContext};
-use http::StatusCode;
+use rate_limit::RateLimiter;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
@@ -20,9 +21,10 @@ pub enum FilterResult {
 /// when the route is compiled (at config load / hot-reload time), NOT per-request.
 ///
 /// Adding a new filter:
-/// 1. Add a variant here
-/// 2. Implement the two match arms in `on_request` / `on_response`
-/// 3. Add construction logic in `build_route_filters`
+/// 1. Add a module under `filter/`
+/// 2. Add a variant here
+/// 3. Implement the two match arms in `on_request` / `on_response`
+/// 4. Add construction logic in `build_route_filters`
 pub enum Filter {
     RateLimit {
         config: RateLimitConfig,
@@ -50,7 +52,7 @@ impl Filter {
     pub async fn on_request(&self, ctx: &mut RequestContext) -> FilterResult {
         match self {
             Filter::RateLimit { config, limiter } => {
-                rate_limit_on_request(config, limiter, ctx).await
+                rate_limit::rate_limit_on_request(config, limiter, ctx).await
             }
         }
     }
@@ -100,49 +102,4 @@ pub fn build_route_filters(
     }
 
     filters
-}
-
-async fn rate_limit_on_request(
-    config: &RateLimitConfig,
-    limiter: &RateLimiter,
-    ctx: &mut RequestContext,
-) -> FilterResult {
-    let key = RateLimiter::extract_key(
-        config,
-        &ctx.route_name,
-        &ctx.host,
-        &ctx.uri_path,
-        &ctx.client_ip,
-    );
-
-    if !limiter.check(config, &key).await {
-        let rejected_code = config.rejected_code;
-        let status = StatusCode::from_u16(rejected_code).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
-
-        tracing::debug!(
-            "filter: rate_limit: rejected, route={}, key={}",
-            ctx.route_name,
-            key
-        );
-
-        metrics::counter!(
-            "gateway_rate_limit_rejected_total",
-            "domain" => ctx.domain_name.clone(),
-            "route" => ctx.route_name.clone(),
-            "mode" => config.mode.clone(),
-        )
-        .increment(1);
-
-        return FilterResult::Reject(ctx.error_response(status, "too many requests"));
-    }
-
-    metrics::counter!(
-        "gateway_rate_limit_allowed_total",
-        "domain" => ctx.domain_name.clone(),
-        "route" => ctx.route_name.clone(),
-        "mode" => config.mode.clone(),
-    )
-    .increment(1);
-
-    FilterResult::Continue
 }

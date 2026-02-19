@@ -3,7 +3,6 @@ pub mod discovery;
 pub mod error;
 pub mod etcd;
 pub mod metrics;
-pub mod middleware;
 pub mod proxy;
 pub mod routing;
 pub mod server;
