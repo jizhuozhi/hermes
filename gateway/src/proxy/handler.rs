@@ -157,7 +157,7 @@ pub async fn handle_request(
     }
 
     // Logging
-    phase_log(&ctx, &final_resp, upstream_elapsed, &cluster);
+    phase_log(&ctx, &final_resp, upstream_elapsed);
 
     Ok(final_resp)
 }
@@ -466,7 +466,6 @@ async fn phase_upstream(
                 return Ok((resp, upstream_elapsed));
             }
             Ok(Err(e)) => {
-                cluster.record_health_failure(&upstream_addr);
                 if let Some(cb) = cb_cfg {
                     cluster
                         .circuit_breakers()
@@ -502,7 +501,6 @@ async fn phase_upstream(
                 return Err(ctx.error_response(StatusCode::BAD_GATEWAY, "bad gateway"));
             }
             Err(_) => {
-                cluster.record_health_failure(&upstream_addr);
                 if let Some(cb) = cb_cfg {
                     cluster
                         .circuit_breakers()
@@ -640,19 +638,8 @@ fn phase_log(
     ctx: &RequestContext,
     resp: &Response<BoxBody>,
     upstream_elapsed: std::time::Duration,
-    cluster: &Cluster,
 ) {
     let resp_status = resp.status().as_u16();
-
-    if let Some(hc) = &cluster.config().health_check {
-        if let Some(passive) = &hc.passive {
-            if passive.unhealthy_statuses.contains(&resp_status) {
-                cluster.record_health_failure(&ctx.upstream_addr);
-            } else {
-                cluster.record_health_success(&ctx.upstream_addr);
-            }
-        }
-    }
 
     if let Some(cl) = resp
         .headers()

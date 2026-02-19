@@ -38,7 +38,6 @@
           <td class="text-muted">{{ c.timeout?.connect }}s / {{ c.timeout?.read }}s</td>
           <td>
             <span v-if="c.health_check && c.health_check.active" class="badge badge-green">Active</span>
-            <span v-if="c.health_check && c.health_check.passive" class="badge badge-green">Passive</span>
             <span v-if="!c.health_check" class="text-muted">-</span>
           </td>
           <td>

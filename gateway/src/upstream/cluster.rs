@@ -88,8 +88,7 @@ pub struct Cluster {
 
     /// Per-node health status from active health checks.
     node_health: Arc<DashMap<String, bool>>,
-    health_success_count: Arc<DashMap<String, AtomicU32>>,
-    health_failure_count: Arc<DashMap<String, AtomicU32>>,
+    health_check_count: Arc<DashMap<String, AtomicU32>>,
 
     /// Consul-discovered nodes (if service discovery is enabled).
     discovered_nodes: Arc<arc_swap::ArcSwap<Vec<UpstreamNode>>>,
@@ -120,8 +119,7 @@ impl Cluster {
             lb,
             circuit_breakers: Arc::new(CircuitBreakerRegistry::new()),
             node_health: Arc::new(DashMap::new()),
-            health_success_count: Arc::new(DashMap::new()),
-            health_failure_count: Arc::new(DashMap::new()),
+            health_check_count: Arc::new(DashMap::new()),
             discovered_nodes: Arc::new(arc_swap::ArcSwap::new(Arc::new(Vec::new()))),
         }
     }
@@ -170,56 +168,32 @@ impl Cluster {
 
     pub fn mark_node_healthy(&self, node_key: &str) {
         self.node_health.insert(node_key.to_string(), true);
-        if let Some(entry) = self.health_failure_count.get(node_key) {
-            entry.value().store(0, Ordering::Relaxed);
-        }
+        self.reset_health_count(node_key);
     }
 
     pub fn mark_node_unhealthy(&self, node_key: &str) {
         self.node_health.insert(node_key.to_string(), false);
-        if let Some(entry) = self.health_success_count.get(node_key) {
-            entry.value().store(0, Ordering::Relaxed);
-        }
+        self.reset_health_count(node_key);
     }
 
-    pub fn record_health_success(&self, node_key: &str) -> u32 {
-        // Fast path: counter already exists — no allocation.
-        if let Some(entry) = self.health_success_count.get(node_key) {
-            let val = entry.value().fetch_add(1, Ordering::Relaxed) + 1;
-            if let Some(fail_entry) = self.health_failure_count.get(node_key) {
-                fail_entry.value().store(0, Ordering::Relaxed);
-            }
-            return val;
+    /// Increment consecutive health check counter (success or failure streak).
+    /// Returns the new count. The caller decides the semantics (success vs failure).
+    pub fn record_health_check(&self, node_key: &str) -> u32 {
+        if let Some(entry) = self.health_check_count.get(node_key) {
+            return entry.value().fetch_add(1, Ordering::Relaxed) + 1;
         }
         let counter = self
-            .health_success_count
+            .health_check_count
             .entry(node_key.to_string())
             .or_insert_with(|| AtomicU32::new(0));
-        let val = counter.value().fetch_add(1, Ordering::Relaxed) + 1;
-        if let Some(entry) = self.health_failure_count.get(node_key) {
-            entry.value().store(0, Ordering::Relaxed);
-        }
-        val
+        counter.value().fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    pub fn record_health_failure(&self, node_key: &str) -> u32 {
-        // Fast path: counter already exists — no allocation.
-        if let Some(entry) = self.health_failure_count.get(node_key) {
-            let val = entry.value().fetch_add(1, Ordering::Relaxed) + 1;
-            if let Some(succ_entry) = self.health_success_count.get(node_key) {
-                succ_entry.value().store(0, Ordering::Relaxed);
-            }
-            return val;
-        }
-        let counter = self
-            .health_failure_count
-            .entry(node_key.to_string())
-            .or_insert_with(|| AtomicU32::new(0));
-        let val = counter.value().fetch_add(1, Ordering::Relaxed) + 1;
-        if let Some(entry) = self.health_success_count.get(node_key) {
+    /// Reset the consecutive health check counter for a node.
+    pub fn reset_health_count(&self, node_key: &str) {
+        if let Some(entry) = self.health_check_count.get(node_key) {
             entry.value().store(0, Ordering::Relaxed);
         }
-        val
     }
 
     // ---- Circuit breaker ----
@@ -276,9 +250,7 @@ impl Cluster {
             .collect();
 
         self.node_health.retain(|k, _| active_keys.contains(k));
-        self.health_success_count
-            .retain(|k, _| active_keys.contains(k));
-        self.health_failure_count
+        self.health_check_count
             .retain(|k, _| active_keys.contains(k));
         self.circuit_breakers.retain_nodes(&active_keys);
     }
@@ -331,8 +303,7 @@ impl Cluster {
             lb: new_lb,
             circuit_breakers: self.circuit_breakers.clone(),
             node_health: self.node_health.clone(),
-            health_success_count: self.health_success_count.clone(),
-            health_failure_count: self.health_failure_count.clone(),
+            health_check_count: self.health_check_count.clone(),
             discovered_nodes: self.discovered_nodes.clone(),
         }
     }

@@ -68,11 +68,15 @@ async fn check_one_node(
     active: &ActiveHealthCheck,
     node: &crate::config::UpstreamNode,
 ) {
+    // Use the dedicated health check port if configured, otherwise fall back
+    // to the node's business port. This supports the common pattern where
+    // health endpoints run on a separate management port.
+    let probe_port = active.port.unwrap_or(node.port);
     let url = format!(
         "{}://{}:{}{}",
         cluster.config().scheme,
         node.host,
-        node.port,
+        probe_port,
         active.path
     );
     let node_key = format!("{}:{}", node.host, node.port);
@@ -93,8 +97,8 @@ async fn check_one_node(
     };
 
     if healthy {
-        let count = cluster.record_health_success(&node_key);
-        if count >= active.healthy_threshold {
+        let count = cluster.record_health_check(&node_key);
+        if count >= active.healthy_threshold && !cluster.is_node_healthy(&node_key) {
             cluster.mark_node_healthy(&node_key);
         }
         debug!(
@@ -102,7 +106,9 @@ async fn check_one_node(
             cluster_name, node_key
         );
     } else {
-        let count = cluster.record_health_failure(&node_key);
+        // Reset success streak and count failures.
+        cluster.reset_health_count(&node_key);
+        let count = cluster.record_health_check(&node_key);
         if count >= active.unhealthy_threshold {
             cluster.mark_node_unhealthy(&node_key);
             warn!(

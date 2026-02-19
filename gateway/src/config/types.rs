@@ -534,13 +534,11 @@ fn default_rejected_code() -> u16 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheckConfig {
-    /// Active health check: send requests to upstream.
+    /// Active health check: send HTTP probes to upstream nodes.
+    /// This is the only health check mode — passive health check has been
+    /// removed in favour of the circuit breaker for real-traffic failure detection.
     #[serde(default)]
     pub active: Option<ActiveHealthCheck>,
-
-    /// Passive health check: observe real traffic.
-    #[serde(default)]
-    pub passive: Option<PassiveHealthCheck>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -552,6 +550,12 @@ pub struct ActiveHealthCheck {
     /// Health check path.
     #[serde(default = "default_hc_path")]
     pub path: String,
+
+    /// Optional override port for health check probes.
+    /// When set, probes are sent to this port instead of the node's business port.
+    /// Useful when the health endpoint runs on a separate management port.
+    #[serde(default)]
+    pub port: Option<u16>,
 
     /// Expected healthy HTTP status codes.
     #[serde(default = "default_healthy_statuses")]
@@ -597,21 +601,6 @@ fn default_hc_timeout() -> u64 {
 
 fn default_hc_concurrency() -> usize {
     64
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PassiveHealthCheck {
-    /// Number of consecutive 5xx responses to mark unhealthy.
-    #[serde(default = "default_hc_threshold")]
-    pub unhealthy_threshold: u32,
-
-    /// HTTP status codes considered unhealthy.
-    #[serde(default = "default_unhealthy_statuses")]
-    pub unhealthy_statuses: Vec<u16>,
-}
-
-fn default_unhealthy_statuses() -> Vec<u16> {
-    vec![500, 502, 503, 504]
 }
 
 /// Self-registration configuration for registering this gateway to Consul.

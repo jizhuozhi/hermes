@@ -138,23 +138,18 @@ type RateLimitConfig struct {
 }
 
 type HealthCheckConfig struct {
-	Active  *ActiveHealthCheck  `json:"active,omitempty"`
-	Passive *PassiveHealthCheck `json:"passive,omitempty"`
+	Active *ActiveHealthCheck `json:"active,omitempty"`
 }
 
 type ActiveHealthCheck struct {
 	Interval           int    `json:"interval"`
 	Path               string `json:"path"`
+	Port               *int   `json:"port,omitempty"`
 	HealthyStatuses    []int  `json:"healthy_statuses"`
 	HealthyThreshold   int    `json:"healthy_threshold"`
 	UnhealthyThreshold int    `json:"unhealthy_threshold"`
 	Timeout            int    `json:"timeout"`
 	Concurrency        int    `json:"concurrency,omitempty"`
-}
-
-type PassiveHealthCheck struct {
-	UnhealthyThreshold int   `json:"unhealthy_threshold"`
-	UnhealthyStatuses  []int `json:"unhealthy_statuses"`
 }
 
 type RegistrationConfig struct {

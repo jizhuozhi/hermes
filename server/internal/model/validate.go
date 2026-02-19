@@ -245,6 +245,9 @@ func ValidateClusters(clusters []ClusterConfig) []ValidationError {
 				} else if !strings.HasPrefix(a.Path, "/") {
 					errs = append(errs, ValidationError{ap + ".path", "must start with /"})
 				}
+				if a.Port != nil && (*a.Port <= 0 || *a.Port > 65535) {
+					errs = append(errs, ValidationError{ap + ".port", "must be 1-65535"})
+				}
 				if a.Timeout <= 0 {
 					errs = append(errs, ValidationError{ap + ".timeout", "must be > 0"})
 				}
@@ -265,24 +268,8 @@ func ValidateClusters(clusters []ClusterConfig) []ValidationError {
 				if a.Concurrency < 0 {
 					errs = append(errs, ValidationError{ap + ".concurrency", "must be >= 0"})
 				}
-			}
-			if c.HealthCheck.Passive != nil {
-				pp := hcPrefix + ".passive"
-				p := c.HealthCheck.Passive
-				if p.UnhealthyThreshold <= 0 {
-					errs = append(errs, ValidationError{pp + ".unhealthy_threshold", "must be > 0"})
-				}
-				if len(p.UnhealthyStatuses) == 0 {
-					errs = append(errs, ValidationError{pp + ".unhealthy_statuses", "at least one status code is required"})
-				}
-				for j, s := range p.UnhealthyStatuses {
-					if s < 100 || s > 599 {
-						errs = append(errs, ValidationError{fmt.Sprintf("%s.unhealthy_statuses[%d]", pp, j), "must be a valid HTTP status code (100-599)"})
-					}
-				}
-			}
-			if c.HealthCheck.Active == nil && c.HealthCheck.Passive == nil {
-				errs = append(errs, ValidationError{hcPrefix, "at least one of active or passive is required"})
+			} else {
+				errs = append(errs, ValidationError{hcPrefix, "active health check is required when health_check is set"})
 			}
 		}
 

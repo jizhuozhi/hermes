@@ -159,6 +159,11 @@
                 <input v-model.number="activeHC.timeout" type="number" min="1" />
               </div>
               <div class="field">
+                <label>Port (optional)</label>
+                <input v-model.number="activeHCPort" type="number" min="1" max="65535" placeholder="same as node" />
+                <span class="hint">Override port for health probes (leave empty to use node port)</span>
+              </div>
+              <div class="field">
                 <label>Healthy Threshold</label>
                 <input v-model.number="activeHC.healthy_threshold" type="number" min="1" />
               </div>
@@ -174,27 +179,6 @@
                 <label>Healthy Statuses</label>
                 <input v-model="activeHCHealthyStatuses" placeholder="200" />
                 <span class="hint">Comma-separated HTTP status codes, e.g. 200,204</span>
-              </div>
-            </div>
-          </div>
-          <!-- Passive Health Check -->
-          <div class="sub-section">
-            <h3>
-              Passive Health Check
-              <label class="toggle" style="margin-left: 12px;">
-                <input type="checkbox" v-model="enablePassiveHC" />
-                <span class="toggle-slider"></span>
-              </label>
-            </h3>
-            <div v-if="enablePassiveHC" class="form-grid">
-              <div class="field">
-                <label>Unhealthy Threshold</label>
-                <input v-model.number="passiveHC.unhealthy_threshold" type="number" min="1" />
-              </div>
-              <div class="field field-wide">
-                <label>Unhealthy Statuses</label>
-                <input v-model="passiveHCUnhealthyStatuses" placeholder="500,502,503,504" />
-                <span class="hint">Comma-separated HTTP status codes</span>
               </div>
             </div>
           </div>
@@ -323,11 +307,9 @@ export default {
       // Health Check
       enableHealthCheck: false,
       enableActiveHC: false,
-      enablePassiveHC: false,
       activeHC: { interval: 10, path: '/health', timeout: 3, healthy_threshold: 3, unhealthy_threshold: 3, concurrency: 64, healthy_statuses: [200] },
-      passiveHC: { unhealthy_threshold: 3, unhealthy_statuses: [500, 502, 503, 504] },
+      activeHCPort: null,
       activeHCHealthyStatuses: '200',
-      passiveHCUnhealthyStatuses: '500,502,503,504',
       // Retry
       enableRetry: false,
       retryConfig: { count: 2, retry_on_statuses: [502, 503, 504], retry_on_connect_failure: true, retry_on_timeout: true },
@@ -375,11 +357,7 @@ export default {
             this.enableActiveHC = true
             this.activeHC = { ...this.activeHC, ...this.cluster.health_check.active }
             this.activeHCHealthyStatuses = (this.activeHC.healthy_statuses || []).join(',')
-          }
-          if (this.cluster.health_check.passive) {
-            this.enablePassiveHC = true
-            this.passiveHC = { ...this.passiveHC, ...this.cluster.health_check.passive }
-            this.passiveHCUnhealthyStatuses = (this.passiveHC.unhealthy_statuses || []).join(',')
+            this.activeHCPort = this.cluster.health_check.active.port || null
           }
         }
         // Hydrate retry
@@ -453,10 +431,7 @@ export default {
         if (this.enableActiveHC) {
           this.activeHC.healthy_statuses = this.parseStatuses(this.activeHCHealthyStatuses)
           hc.active = { ...this.activeHC }
-        }
-        if (this.enablePassiveHC) {
-          this.passiveHC.unhealthy_statuses = this.parseStatuses(this.passiveHCUnhealthyStatuses)
-          hc.passive = { ...this.passiveHC }
+          hc.active.port = this.activeHCPort || undefined
         }
         this.cluster.health_check = hc
       } else {
