@@ -1,0 +1,26 @@
+codecov:
+  notify:
+    after_n_builds: 3
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+    patch:
+      default:
+        target: auto
+
+flags:
+  server:
+    paths:
+      - server/
+    carryforward: true
+  controller:
+    paths:
+      - controller/
+    carryforward: true
+  gateway:
+    paths:
+      - gateway/
+    carryforward: true
