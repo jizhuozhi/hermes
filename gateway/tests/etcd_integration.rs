@@ -26,10 +26,7 @@ async fn start_etcd() -> (EtcdClient, EtcdConfig, ContainerAsync<GenericImage>) 
         .expect("failed to start etcd container");
 
     let host = container.get_host().await.expect("get host");
-    let port = container
-        .get_host_port_ipv4(2379)
-        .await
-        .expect("get port");
+    let port = container.get_host_port_ipv4(2379).await.expect("get port");
 
     let endpoint = format!("http://{}:{}", host, port);
 
@@ -184,10 +181,7 @@ async fn test_etcd_lease_grant_and_keepalive() {
     assert_eq!(resp.kvs.len(), 1);
 
     // Revoke lease — key should disappear
-    client
-        .lease_revoke(lease_id)
-        .await
-        .expect("lease revoke");
+    client.lease_revoke(lease_id).await.expect("lease revoke");
 
     let resp = client
         .range(&hermes_gateway::etcd::client::RangeRequest {
@@ -277,7 +271,9 @@ async fn test_initial_load_empty() {
     let (client, cfg, _container) = start_etcd().await;
     let prefixes = compute_prefixes(&cfg);
 
-    let load = initial_load(&client, &prefixes).await.expect("initial load");
+    let load = initial_load(&client, &prefixes)
+        .await
+        .expect("initial load");
 
     assert_eq!(load.domains.len(), 0);
     assert_eq!(load.clusters.len(), 0);
@@ -327,7 +323,9 @@ async fn test_initial_load_with_data() {
         .await
         .unwrap();
 
-    let load = initial_load(&client, &prefixes).await.expect("initial load");
+    let load = initial_load(&client, &prefixes)
+        .await
+        .expect("initial load");
 
     assert_eq!(load.domains.len(), 2);
     assert_eq!(load.clusters.len(), 1);
@@ -364,7 +362,9 @@ async fn test_initial_load_ignores_history_keys() {
         .await
         .unwrap();
 
-    let load = initial_load(&client, &prefixes).await.expect("initial load");
+    let load = initial_load(&client, &prefixes)
+        .await
+        .expect("initial load");
     assert_eq!(load.domains.len(), 1, "history key should be filtered out");
     assert_eq!(load.domains[0].name, "api");
 }

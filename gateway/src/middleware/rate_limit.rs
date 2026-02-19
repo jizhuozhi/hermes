@@ -90,13 +90,19 @@ const GC_INTERVAL_SECS: u64 = 60;
 /// this limit are force-evicted regardless of last-access time.
 const MAX_ENTRIES: usize = 100_000;
 
-impl RateLimiter {
-    pub fn new() -> Self {
+impl Default for RateLimiter {
+    fn default() -> Self {
         Self {
             buckets: DashMap::new(),
             windows: DashMap::new(),
             instance_count: Arc::new(AtomicU32::new(1)),
         }
+    }
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Create a rate limiter with a shared instance count (for distributed mode).

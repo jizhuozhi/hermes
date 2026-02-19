@@ -1,9 +1,9 @@
 use crate::config::{ClusterConfig, DomainConfig, EtcdConfig};
 use crate::etcd::{
-    EtcdClient,
     client::{
         b64_decode, b64_encode, prefix_range_end, RangeRequest, WatchCreate, WatchCreateRequest,
     },
+    EtcdClient,
 };
 use anyhow::Result;
 use tracing::{error, info, warn};
@@ -16,11 +16,15 @@ use tracing::{error, info, warn};
 pub enum ConfigEvent {
     DomainUpsert(DomainConfig),
     DomainDelete(String),
-    ClusterUpsert(ClusterConfig),
+    ClusterUpsert(Box<ClusterConfig>),
     ClusterDelete(String),
     MetaRevision(i64),
     /// A parse error was encountered (non-fatal, caller may count as metric).
-    ParseError { prefix_kind: &'static str, key: String, error: String },
+    ParseError {
+        prefix_kind: &'static str,
+        key: String,
+        error: String,
+    },
 }
 
 /// Result of initial config load from etcd.
@@ -63,18 +67,28 @@ pub fn compute_prefixes(etcd_cfg: &EtcdConfig) -> EtcdPrefixes {
 /// Load all domains and clusters from etcd (range scan). Returns parsed data
 /// without touching any shared state — the caller is responsible for applying.
 pub async fn initial_load(client: &EtcdClient, prefixes: &EtcdPrefixes) -> Result<InitialLoad> {
-    let (clusters, cluster_rev) = load_prefix::<ClusterConfig>(client, &prefixes.cluster_prefix, "cluster").await?;
-    let (domains, domain_rev) = load_prefix::<DomainConfig>(client, &prefixes.domain_prefix, "domain").await?;
+    let (clusters, cluster_rev) =
+        load_prefix::<ClusterConfig>(client, &prefixes.cluster_prefix, "cluster").await?;
+    let (domains, domain_rev) =
+        load_prefix::<DomainConfig>(client, &prefixes.domain_prefix, "domain").await?;
 
     let revision = cluster_rev.max(domain_rev);
     let meta_revision = read_meta_revision(client, &prefixes.meta_revision_key).await;
 
     info!(
         "etcd: initial load, domains={}, clusters={}, revision={}, meta_revision={}",
-        domains.len(), clusters.len(), revision, meta_revision
+        domains.len(),
+        clusters.len(),
+        revision,
+        meta_revision
     );
 
-    Ok(InitialLoad { domains, clusters, revision, meta_revision })
+    Ok(InitialLoad {
+        domains,
+        clusters,
+        revision,
+        meta_revision,
+    })
 }
 
 /// Open three concurrent watch streams (domain, cluster, meta) and yield
@@ -100,16 +114,29 @@ pub async fn watch_once(
     let sender_m = sender;
 
     let domain_handle = tokio::spawn(async move {
-        watch_prefix_stream(&client_d, &domain_prefix, start_revision, sender_d, PrefixKind::Domain).await
+        watch_prefix_stream(
+            &client_d,
+            &domain_prefix,
+            start_revision,
+            sender_d,
+            PrefixKind::Domain,
+        )
+        .await
     });
 
     let cluster_handle = tokio::spawn(async move {
-        watch_prefix_stream(&client_c, &cluster_prefix, start_revision, sender_c, PrefixKind::Cluster).await
+        watch_prefix_stream(
+            &client_c,
+            &cluster_prefix,
+            start_revision,
+            sender_c,
+            PrefixKind::Cluster,
+        )
+        .await
     });
 
-    let meta_handle = tokio::spawn(async move {
-        watch_meta_stream(&client_m, &meta_key, sender_m).await
-    });
+    let meta_handle =
+        tokio::spawn(async move { watch_meta_stream(&client_m, &meta_key, sender_m).await });
 
     // Wait for any to complete (stream end or error). Others will be cancelled.
     tokio::select! {
@@ -165,11 +192,7 @@ async fn load_prefix<T: serde::de::DeserializeOwned + std::fmt::Debug>(
         })
         .await?;
 
-    let revision = resp
-        .header
-        .as_ref()
-        .and_then(|h| h.revision)
-        .unwrap_or(0);
+    let revision = resp.header.as_ref().and_then(|h| h.revision).unwrap_or(0);
 
     let mut items = Vec::new();
     for kv in &resp.kvs {
@@ -298,7 +321,8 @@ async fn watch_prefix_stream(
                                                     "etcd: watch: domain upserted, name={}, revision={}",
                                                     domain.name, latest_revision
                                                 );
-                                                let _ = sender.send(ConfigEvent::DomainUpsert(domain));
+                                                let _ =
+                                                    sender.send(ConfigEvent::DomainUpsert(domain));
                                             }
                                             Err(e) => {
                                                 error!(
@@ -320,7 +344,9 @@ async fn watch_prefix_stream(
                                                     "etcd: watch: cluster upserted, name={}, revision={}",
                                                     cluster.name, latest_revision
                                                 );
-                                                let _ = sender.send(ConfigEvent::ClusterUpsert(cluster));
+                                                let _ = sender.send(ConfigEvent::ClusterUpsert(
+                                                    Box::new(cluster),
+                                                ));
                                             }
                                             Err(e) => {
                                                 error!(
@@ -358,14 +384,18 @@ async fn watch_prefix_stream(
                                             "etcd: watch: domain deleted, name={}, revision={}",
                                             resource_name, latest_revision
                                         );
-                                        let _ = sender.send(ConfigEvent::DomainDelete(resource_name.to_string()));
+                                        let _ = sender.send(ConfigEvent::DomainDelete(
+                                            resource_name.to_string(),
+                                        ));
                                     }
                                     PrefixKind::Cluster => {
                                         info!(
                                             "etcd: watch: cluster deleted, name={}, revision={}",
                                             resource_name, latest_revision
                                         );
-                                        let _ = sender.send(ConfigEvent::ClusterDelete(resource_name.to_string()));
+                                        let _ = sender.send(ConfigEvent::ClusterDelete(
+                                            resource_name.to_string(),
+                                        ));
                                     }
                                 }
                             }

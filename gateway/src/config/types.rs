@@ -13,7 +13,7 @@ where
 }
 
 /// Top-level gateway configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayConfig {
     /// Consul discovery settings.
     #[serde(default)]

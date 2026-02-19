@@ -21,7 +21,11 @@ pub struct ConsulService {
     pub address: String,
     #[serde(rename = "Port")]
     pub port: u16,
-    #[serde(rename = "Meta", default, deserialize_with = "deserialize_null_default")]
+    #[serde(
+        rename = "Meta",
+        default,
+        deserialize_with = "deserialize_null_default"
+    )]
     pub meta: HashMap<String, String>,
 }
 
@@ -86,11 +90,7 @@ pub struct ConsulClient {
 }
 
 impl ConsulClient {
-    pub fn new(
-        consul_addr: &str,
-        token: Option<String>,
-        datacenter: Option<String>,
-    ) -> Self {
+    pub fn new(consul_addr: &str, token: Option<String>, datacenter: Option<String>) -> Self {
         let base_url = if consul_addr.starts_with("http://") || consul_addr.starts_with("https://")
         {
             consul_addr.trim_end_matches('/').to_string()
@@ -214,11 +214,7 @@ impl ConsulClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            tracing::warn!(
-                "consul: deregister failed: {} - {}",
-                status,
-                body
-            );
+            tracing::warn!("consul: deregister failed: {} - {}", status, body);
         }
 
         Ok(())
@@ -226,10 +222,7 @@ impl ConsulClient {
 
     /// Send TTL heartbeat via /v1/agent/check/pass/{check_id}.
     pub async fn pass_ttl(&self, check_id: &str) -> Result<(), GatewayError> {
-        let url = format!(
-            "{}/v1/agent/check/pass/{}",
-            self.base_url, check_id
-        );
+        let url = format!("{}/v1/agent/check/pass/{}", self.base_url, check_id);
 
         let resp = self
             .authed(self.client.put(&url))
@@ -243,10 +236,7 @@ impl ConsulClient {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            return Err(GatewayError::Consul(format!(
-                "pass TTL failed: {}",
-                status
-            )));
+            return Err(GatewayError::Consul(format!("pass TTL failed: {}", status)));
         }
 
         Ok(())

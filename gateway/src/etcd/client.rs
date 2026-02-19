@@ -211,16 +211,24 @@ impl EtcdClient {
                         auth.token
                     }
                     Err(e) => {
-                        tracing::warn!("etcd: endpoint {} auth failed: {}, trying next", base_url, e);
+                        tracing::warn!(
+                            "etcd: endpoint {} auth failed: {}, trying next",
+                            base_url,
+                            e
+                        );
                         last_error = Some(e.into());
                         continue;
                     }
                 }
             } else {
                 // Verify connectivity with a lightweight request.
-                match http.post(format!("{}/v3/kv/range", base_url))
+                match http
+                    .post(format!("{}/v3/kv/range", base_url))
                     .json(&RangeRequest {
-                        key: base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"/"),
+                        key: base64::Engine::encode(
+                            &base64::engine::general_purpose::STANDARD,
+                            b"/",
+                        ),
                         range_end: String::new(),
                         keys_only: Some(true),
                     })
@@ -229,7 +237,11 @@ impl EtcdClient {
                 {
                     Ok(_) => None,
                     Err(e) => {
-                        tracing::warn!("etcd: endpoint {} unreachable: {}, trying next", base_url, e);
+                        tracing::warn!(
+                            "etcd: endpoint {} unreachable: {}, trying next",
+                            base_url,
+                            e
+                        );
                         last_error = Some(e.into());
                         continue;
                     }
@@ -284,10 +296,7 @@ impl EtcdClient {
 
     /// Open a watch stream. Returns a receiver of parsed `WatchResponse` lines.
     /// The caller should loop on the receiver until it closes (stream ended / error).
-    pub async fn watch_stream(
-        &self,
-        req: &WatchCreateRequest,
-    ) -> anyhow::Result<WatchStream> {
+    pub async fn watch_stream(&self, req: &WatchCreateRequest) -> anyhow::Result<WatchStream> {
         let resp = self.post_json("/v3/watch", req).await?;
         Ok(WatchStream {
             stream: Box::pin(resp.bytes_stream()),
@@ -312,7 +321,10 @@ impl EtcdClient {
     /// Keep a lease alive (single ping).
     pub async fn lease_keepalive(&self, lease_id: i64) -> anyhow::Result<()> {
         let ka: LeaseKeepAliveResponse = self
-            .post_json("/v3/lease/keepalive", &LeaseKeepAliveRequest { id: lease_id })
+            .post_json(
+                "/v3/lease/keepalive",
+                &LeaseKeepAliveRequest { id: lease_id },
+            )
             .await?
             .json()
             .await?;
@@ -324,14 +336,17 @@ impl EtcdClient {
 
     /// Revoke a lease.
     pub async fn lease_revoke(&self, lease_id: i64) -> anyhow::Result<()> {
-        self.post_json("/v3/lease/revoke", &LeaseRevokeRequest { id: lease_id }).await?;
+        self.post_json("/v3/lease/revoke", &LeaseRevokeRequest { id: lease_id })
+            .await?;
         Ok(())
     }
 }
 
 /// A streaming watch connection. Call `next_event()` to get parsed responses.
 pub struct WatchStream {
-    stream: std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>,
+    stream: std::pin::Pin<
+        Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>,
+    >,
     buf: BytesMut,
 }
 

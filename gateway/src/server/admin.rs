@@ -39,10 +39,7 @@ pub fn handle_admin(
             let body = state.metrics.render();
             Ok(Response::builder()
                 .status(200)
-                .header(
-                    "content-type",
-                    "text/plain; version=0.0.4; charset=utf-8",
-                )
+                .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
                 .body(full_body(body))
                 .unwrap())
         }

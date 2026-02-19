@@ -14,8 +14,8 @@ struct BalancerState {
     total_weight: u64,
 }
 
-impl RandomBalancer {
-    pub fn new() -> Self {
+impl Default for RandomBalancer {
+    fn default() -> Self {
         Self {
             state: ArcSwap::from_pointee(BalancerState {
                 instances: Vec::new(),
@@ -23,6 +23,12 @@ impl RandomBalancer {
                 total_weight: 0,
             }),
         }
+    }
+}
+
+impl RandomBalancer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn update_instances(&self, instances: Vec<UpstreamInstance>) {

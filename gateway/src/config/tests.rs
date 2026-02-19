@@ -87,7 +87,10 @@ fn test_validate_empty_uri_fails() {
                 methods: vec![],
                 headers: vec![],
                 priority: 0,
-                clusters: vec![WeightedCluster { name: "c1".into(), weight: 100 }],
+                clusters: vec![WeightedCluster {
+                    name: "c1".into(),
+                    weight: 100,
+                }],
                 rate_limit: None,
                 cluster_override_header: None,
                 request_header_transforms: vec![],
@@ -120,7 +123,10 @@ fn test_validate_valid_config() {
                 methods: vec![],
                 headers: vec![],
                 priority: 0,
-                clusters: vec![WeightedCluster { name: "c1".into(), weight: 100 }],
+                clusters: vec![WeightedCluster {
+                    name: "c1".into(),
+                    weight: 100,
+                }],
                 rate_limit: None,
                 cluster_override_header: None,
                 request_header_transforms: vec![],
@@ -153,20 +159,44 @@ fn test_total_route_count() {
                 hosts: vec!["a.com".into()],
                 routes: vec![
                     RouteConfig {
-                        id: "1".into(), name: "r1".into(), uri: "/a".into(),
-                        methods: vec![], headers: vec![], priority: 0,
-                        clusters: vec![WeightedCluster { name: "c".into(), weight: 100 }],
-                        rate_limit: None, cluster_override_header: None,
-                        request_header_transforms: vec![], response_header_transforms: vec![],
-                        status: 1, plugins: None, max_body_bytes: None, enable_compression: false,
+                        id: "1".into(),
+                        name: "r1".into(),
+                        uri: "/a".into(),
+                        methods: vec![],
+                        headers: vec![],
+                        priority: 0,
+                        clusters: vec![WeightedCluster {
+                            name: "c".into(),
+                            weight: 100,
+                        }],
+                        rate_limit: None,
+                        cluster_override_header: None,
+                        request_header_transforms: vec![],
+                        response_header_transforms: vec![],
+                        status: 1,
+                        plugins: None,
+                        max_body_bytes: None,
+                        enable_compression: false,
                     },
                     RouteConfig {
-                        id: "2".into(), name: "r2".into(), uri: "/b".into(),
-                        methods: vec![], headers: vec![], priority: 0,
-                        clusters: vec![WeightedCluster { name: "c".into(), weight: 100 }],
-                        rate_limit: None, cluster_override_header: None,
-                        request_header_transforms: vec![], response_header_transforms: vec![],
-                        status: 1, plugins: None, max_body_bytes: None, enable_compression: false,
+                        id: "2".into(),
+                        name: "r2".into(),
+                        uri: "/b".into(),
+                        methods: vec![],
+                        headers: vec![],
+                        priority: 0,
+                        clusters: vec![WeightedCluster {
+                            name: "c".into(),
+                            weight: 100,
+                        }],
+                        rate_limit: None,
+                        cluster_override_header: None,
+                        request_header_transforms: vec![],
+                        response_header_transforms: vec![],
+                        status: 1,
+                        plugins: None,
+                        max_body_bytes: None,
+                        enable_compression: false,
                     },
                 ],
             },
@@ -174,12 +204,24 @@ fn test_total_route_count() {
                 name: "d2".into(),
                 hosts: vec!["b.com".into()],
                 routes: vec![RouteConfig {
-                    id: "3".into(), name: "r3".into(), uri: "/c".into(),
-                    methods: vec![], headers: vec![], priority: 0,
-                    clusters: vec![WeightedCluster { name: "c".into(), weight: 100 }],
-                    rate_limit: None, cluster_override_header: None,
-                    request_header_transforms: vec![], response_header_transforms: vec![],
-                    status: 1, plugins: None, max_body_bytes: None, enable_compression: false,
+                    id: "3".into(),
+                    name: "r3".into(),
+                    uri: "/c".into(),
+                    methods: vec![],
+                    headers: vec![],
+                    priority: 0,
+                    clusters: vec![WeightedCluster {
+                        name: "c".into(),
+                        weight: 100,
+                    }],
+                    rate_limit: None,
+                    cluster_override_header: None,
+                    request_header_transforms: vec![],
+                    response_header_transforms: vec![],
+                    status: 1,
+                    plugins: None,
+                    max_body_bytes: None,
+                    enable_compression: false,
                 }],
             },
         ],
@@ -233,7 +275,10 @@ fn test_cluster_config_serde() {
     assert_eq!(cluster.timeout.read, 10.0);
     assert_eq!(cluster.keepalive_pool.size, 64);
     assert_eq!(cluster.retry.as_ref().unwrap().count, 3);
-    assert_eq!(cluster.circuit_breaker.as_ref().unwrap().failure_threshold, 10);
+    assert_eq!(
+        cluster.circuit_breaker.as_ref().unwrap().failure_threshold,
+        10
+    );
 }
 
 #[test]

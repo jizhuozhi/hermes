@@ -97,7 +97,10 @@ pub async fn run_proxy_server(
                 .await
             {
                 if !e.to_string().contains("connection closed") {
-                    error!("server: proxy: connection error, peer={}, error={}", peer_addr, e);
+                    error!(
+                        "server: proxy: connection error, peer={}, error={}",
+                        peer_addr, e
+                    );
                 }
             }
 
@@ -111,7 +114,10 @@ pub async fn run_proxy_server(
     // Drain phase: wait for all in-flight connections to finish (or timeout).
     let active = active_conns.load(Ordering::Relaxed);
     if active > 0 {
-        info!("server: proxy: waiting for {} active connections to drain", active);
+        info!(
+            "server: proxy: waiting for {} active connections to drain",
+            active
+        );
         let drain = async {
             loop {
                 if active_conns.load(Ordering::Relaxed) == 0 {

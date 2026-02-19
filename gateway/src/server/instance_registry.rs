@@ -169,10 +169,7 @@ impl InstanceRegistry {
                             }
                         }
                         Err(e) => {
-                            warn!(
-                                "instance_registry: failed to recount instances: {}",
-                                e
-                            );
+                            warn!("instance_registry: failed to recount instances: {}", e);
                         }
                     }
                 }

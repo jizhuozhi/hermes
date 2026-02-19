@@ -39,7 +39,11 @@ async fn test_token_bucket_allows_burst() {
             allowed += 1;
         }
     }
-    assert!(allowed >= 10, "expected at least 10 allowed, got {}", allowed);
+    assert!(
+        allowed >= 10,
+        "expected at least 10 allowed, got {}",
+        allowed
+    );
 }
 
 #[tokio::test]
@@ -55,7 +59,11 @@ async fn test_token_bucket_rejects_after_burst() {
         }
     }
     // Should have rejected most requests
-    assert!(allowed < 50, "expected most requests rejected, got {} allowed", allowed);
+    assert!(
+        allowed < 50,
+        "expected most requests rejected, got {} allowed",
+        allowed
+    );
 }
 
 #[tokio::test]
@@ -65,10 +73,17 @@ async fn test_sliding_window_basic() {
 
     // First 5 should be allowed
     for i in 0..5 {
-        assert!(limiter.check(&config, "window-key").await, "request {} should be allowed", i);
+        assert!(
+            limiter.check(&config, "window-key").await,
+            "request {} should be allowed",
+            i
+        );
     }
     // 6th should be rejected
-    assert!(!limiter.check(&config, "window-key").await, "request 6 should be rejected");
+    assert!(
+        !limiter.check(&config, "window-key").await,
+        "request 6 should be rejected"
+    );
 }
 
 #[tokio::test]
@@ -133,17 +148,34 @@ async fn test_extract_key_modes() {
     let test_ip: std::net::IpAddr = "10.0.0.1".parse().unwrap();
 
     let config_route = RateLimitConfig {
-        mode: "req".into(), rate: Some(100.0), burst: None, count: None,
-        time_window: None, key: "route".into(), rejected_code: 429,
+        mode: "req".into(),
+        rate: Some(100.0),
+        burst: None,
+        count: None,
+        time_window: None,
+        key: "route".into(),
+        rejected_code: 429,
     };
     assert_eq!(
-        RateLimiter::extract_key(&config_route, "my-route", "example.com", "/api/v1", &test_ip).as_ref(),
+        RateLimiter::extract_key(
+            &config_route,
+            "my-route",
+            "example.com",
+            "/api/v1",
+            &test_ip
+        )
+        .as_ref(),
         "my-route"
     );
 
     let config_remote = RateLimitConfig {
-        mode: "req".into(), rate: Some(100.0), burst: None, count: None,
-        time_window: None, key: "remote_addr".into(), rejected_code: 429,
+        mode: "req".into(),
+        rate: Some(100.0),
+        burst: None,
+        count: None,
+        time_window: None,
+        key: "remote_addr".into(),
+        rejected_code: 429,
     };
     assert_eq!(
         RateLimiter::extract_key(&config_remote, "r", "example.com", "/api", &test_ip).as_ref(),
@@ -151,8 +183,13 @@ async fn test_extract_key_modes() {
     );
 
     let config_uri = RateLimitConfig {
-        mode: "req".into(), rate: Some(100.0), burst: None, count: None,
-        time_window: None, key: "uri".into(), rejected_code: 429,
+        mode: "req".into(),
+        rate: Some(100.0),
+        burst: None,
+        count: None,
+        time_window: None,
+        key: "uri".into(),
+        rejected_code: 429,
     };
     assert_eq!(
         RateLimiter::extract_key(&config_uri, "r", "example.com", "/api/v1", &test_ip).as_ref(),
@@ -160,8 +197,13 @@ async fn test_extract_key_modes() {
     );
 
     let config_host_uri = RateLimitConfig {
-        mode: "req".into(), rate: Some(100.0), burst: None, count: None,
-        time_window: None, key: "host_uri".into(), rejected_code: 429,
+        mode: "req".into(),
+        rate: Some(100.0),
+        burst: None,
+        count: None,
+        time_window: None,
+        key: "host_uri".into(),
+        rejected_code: 429,
     };
     assert_eq!(
         RateLimiter::extract_key(&config_host_uri, "r", "example.com", "/api", &test_ip).as_ref(),

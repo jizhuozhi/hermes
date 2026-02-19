@@ -34,7 +34,9 @@ impl Metrics {
             )
             .expect("valid matcher")
             .set_buckets_for_metric(
-                metrics_exporter_prometheus::Matcher::Full("gateway_http_response_size_bytes".to_string()),
+                metrics_exporter_prometheus::Matcher::Full(
+                    "gateway_http_response_size_bytes".to_string(),
+                ),
                 SIZE_BUCKETS,
             )
             .expect("valid matcher")

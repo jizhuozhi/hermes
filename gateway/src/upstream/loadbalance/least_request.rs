@@ -12,11 +12,17 @@ pub struct LeastRequestBalancer {
     instances: ArcSwap<Vec<UpstreamInstance>>,
 }
 
-impl LeastRequestBalancer {
-    pub fn new() -> Self {
+impl Default for LeastRequestBalancer {
+    fn default() -> Self {
         Self {
             instances: ArcSwap::from_pointee(Vec::new()),
         }
+    }
+}
+
+impl LeastRequestBalancer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn update_instances(&self, instances: Vec<UpstreamInstance>) {

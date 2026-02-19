@@ -9,8 +9,11 @@ use tracing::{debug, warn};
 ///
 /// The caller is responsible for looping / scheduling.
 pub async fn run_health_checks(cluster_store: &ClusterStore, client: &reqwest::Client) {
-    let mut tasks: Vec<(Cluster, Arc<ActiveHealthCheck>, Vec<crate::config::UpstreamNode>)> =
-        Vec::new();
+    let mut tasks: Vec<(
+        Cluster,
+        Arc<ActiveHealthCheck>,
+        Vec<crate::config::UpstreamNode>,
+    )> = Vec::new();
 
     cluster_store.for_each(|_name, cluster| {
         let cfg = cluster.config();

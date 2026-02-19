@@ -36,10 +36,7 @@ impl RouteTable {
     ///
     /// Domains with host `_` contribute to the default fallback tree.
     /// All other hosts are partitioned into exact or wildcard trees.
-    pub fn new(
-        domains: &[DomainConfig],
-        instance_count: Option<Arc<AtomicU32>>,
-    ) -> Self {
+    pub fn new(domains: &[DomainConfig], instance_count: Option<Arc<AtomicU32>>) -> Self {
         let mut exact_hosts: HashMap<String, Vec<crate::config::RouteConfig>> = HashMap::new();
         let mut wildcard_hosts: HashMap<String, Vec<crate::config::RouteConfig>> = HashMap::new();
         let mut default_routes: Vec<crate::config::RouteConfig> = Vec::new();
@@ -211,18 +208,14 @@ fn best_route_from(
 
     for route in routes {
         // Method filter
-        if !route.methods.is_empty()
-            && !route.methods.iter().any(|m| m == method_upper)
-        {
+        if !route.methods.is_empty() && !route.methods.iter().any(|m| m == method_upper) {
             continue;
         }
 
         // Header filter — all matchers must pass (AND semantics)
         if !route.header_matchers.is_empty() {
             let all_match = route.header_matchers.iter().all(|hm| {
-                let header_val = headers
-                    .get(&hm.name)
-                    .and_then(|v| v.to_str().ok());
+                let header_val = headers.get(&hm.name).and_then(|v| v.to_str().ok());
                 hm.matches(header_val)
             });
             if !all_match {
@@ -250,8 +243,7 @@ fn host_matches(req_host: &str, pattern: &str) -> bool {
         req_host.len() >= suffix.len()
             && req_host[req_host.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
     } else if let Some(prefix) = pattern.strip_suffix('*') {
-        req_host.len() >= prefix.len()
-            && req_host[..prefix.len()].eq_ignore_ascii_case(prefix)
+        req_host.len() >= prefix.len() && req_host[..prefix.len()].eq_ignore_ascii_case(prefix)
     } else {
         req_host.eq_ignore_ascii_case(pattern)
     }
@@ -314,7 +306,12 @@ mod tests {
         )];
         let table = RouteTable::new(&domains, None);
         let matched = table
-            .match_route("api.example.com", "/v1/users/profile", "POST", &empty_headers())
+            .match_route(
+                "api.example.com",
+                "/v1/users/profile",
+                "POST",
+                &empty_headers(),
+            )
             .unwrap();
         assert_eq!(matched.name, "specific");
     }
@@ -322,15 +319,27 @@ mod tests {
     #[test]
     fn test_host_based_routing() {
         let domains = vec![
-            make_domain("host-a", vec!["a.example.com"], vec![make_route("host-a", "/*", 0)]),
-            make_domain("host-b", vec!["b.example.com"], vec![make_route("host-b", "/*", 0)]),
+            make_domain(
+                "host-a",
+                vec!["a.example.com"],
+                vec![make_route("host-a", "/*", 0)],
+            ),
+            make_domain(
+                "host-b",
+                vec!["b.example.com"],
+                vec![make_route("host-b", "/*", 0)],
+            ),
         ];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("a.example.com", "/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("a.example.com", "/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "host-a");
 
-        let matched = table.match_route("b.example.com", "/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("b.example.com", "/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "host-b");
     }
 
@@ -343,7 +352,9 @@ mod tests {
         )];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("api.example.com", "/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("api.example.com", "/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "multi-route");
 
         let matched = table
@@ -376,7 +387,9 @@ mod tests {
             make_route("high", "/api/*", 10),
         ])];
         let table = RouteTable::new(&domains, None);
-        let matched = table.match_route("any.com", "/api/v1/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v1/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "high");
     }
 
@@ -387,7 +400,9 @@ mod tests {
             make_route("exact", "/v1/users/list", 0),
         ])];
         let table = RouteTable::new(&domains, None);
-        let matched = table.match_route("any.com", "/v1/users/list", "POST", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/v1/users/list", "POST", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "exact");
     }
 
@@ -399,10 +414,14 @@ mod tests {
         ])];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("any.com", "/api/v1/users", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v1/users", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "deep");
 
-        let matched = table.match_route("any.com", "/api/v2/other", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v2/other", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "shallow");
     }
 
@@ -417,11 +436,15 @@ mod tests {
         ])];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("any.com", "/api/v1/submit", "POST", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v1/submit", "POST", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "post_only");
 
         // GET should not match post_only, should fall through to catchall.
-        let matched = table.match_route("any.com", "/api/v1/submit", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v1/submit", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "catchall");
     }
 
@@ -436,7 +459,9 @@ mod tests {
         ])];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("any.com", "/api/v1/submit", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/v1/submit", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "catchall");
     }
 
@@ -449,9 +474,15 @@ mod tests {
         )];
         let table = RouteTable::new(&domains, None);
 
-        assert!(table.match_route("api.example.com", "/foo", "GET", &empty_headers()).is_some());
-        assert!(table.match_route("cdn.example.com", "/foo", "GET", &empty_headers()).is_some());
-        assert!(table.match_route("other.test.com", "/foo", "GET", &empty_headers()).is_none());
+        assert!(table
+            .match_route("api.example.com", "/foo", "GET", &empty_headers())
+            .is_some());
+        assert!(table
+            .match_route("cdn.example.com", "/foo", "GET", &empty_headers())
+            .is_some());
+        assert!(table
+            .match_route("other.test.com", "/foo", "GET", &empty_headers())
+            .is_none());
     }
 
     #[test]
@@ -463,23 +494,41 @@ mod tests {
         )];
         let table = RouteTable::new(&domains, None);
 
-        assert!(table.match_route("api.example.com", "/foo", "GET", &empty_headers()).is_some());
-        assert!(table.match_route("api.newbrand.io", "/foo", "GET", &empty_headers()).is_some());
-        assert!(table.match_route("web.example.com", "/foo", "GET", &empty_headers()).is_none());
+        assert!(table
+            .match_route("api.example.com", "/foo", "GET", &empty_headers())
+            .is_some());
+        assert!(table
+            .match_route("api.newbrand.io", "/foo", "GET", &empty_headers())
+            .is_some());
+        assert!(table
+            .match_route("web.example.com", "/foo", "GET", &empty_headers())
+            .is_none());
     }
 
     #[test]
     fn test_host_exact_over_wildcard() {
         let domains = vec![
-            make_domain("wildcard", vec!["*.example.com"], vec![make_route("wildcard", "/*", 0)]),
-            make_domain("exact", vec!["api.example.com"], vec![make_route("exact", "/*", 10)]),
+            make_domain(
+                "wildcard",
+                vec!["*.example.com"],
+                vec![make_route("wildcard", "/*", 0)],
+            ),
+            make_domain(
+                "exact",
+                vec!["api.example.com"],
+                vec![make_route("exact", "/*", 10)],
+            ),
         ];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("api.example.com", "/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("api.example.com", "/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "exact");
 
-        let matched = table.match_route("cdn.example.com", "/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("cdn.example.com", "/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "wildcard");
     }
 
@@ -495,10 +544,14 @@ mod tests {
         ];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("a.example.com", "/api/v1", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("a.example.com", "/api/v1", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "host-only");
 
-        let matched = table.match_route("b.example.com", "/api/v1", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("b.example.com", "/api/v1", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "default");
     }
 
@@ -517,11 +570,15 @@ mod tests {
         ];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("a.example.com", "/api/submit", "POST", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("a.example.com", "/api/submit", "POST", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "host_post");
 
         // GET on same host+uri: host tree has no GET match, falls to default.
-        let matched = table.match_route("a.example.com", "/api/submit", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("a.example.com", "/api/submit", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "default_catchall");
     }
 
@@ -543,15 +600,21 @@ mod tests {
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-api-version", "v2".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "v2_route");
 
-        let matched = table.match_route("any.com", "/api/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "default_route");
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-api-version", "v1".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "default_route");
     }
 
@@ -573,12 +636,16 @@ mod tests {
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-tenant", "corp-acme".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "corp_route");
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-tenant", "indie-shop".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "default_route");
     }
 
@@ -600,10 +667,14 @@ mod tests {
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-canary", "anything".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "canary_route");
 
-        let matched = table.match_route("any.com", "/api/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "default_route");
     }
 
@@ -623,12 +694,16 @@ mod tests {
         ])];
         let table = RouteTable::new(&domains, None);
 
-        let matched = table.match_route("any.com", "/api/foo", "GET", &empty_headers()).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &empty_headers())
+            .unwrap();
         assert_eq!(matched.name, "external_route");
 
         let mut headers = http::HeaderMap::new();
         headers.insert("x-internal", "true".parse().unwrap());
-        let matched = table.match_route("any.com", "/api/foo", "GET", &headers).unwrap();
+        let matched = table
+            .match_route("any.com", "/api/foo", "GET", &headers)
+            .unwrap();
         assert_eq!(matched.name, "catchall");
     }
 

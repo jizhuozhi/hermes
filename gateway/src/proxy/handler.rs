@@ -91,10 +91,7 @@ pub async fn handle_request(
                     "proxy: request body too large, content_length={}, max={}, route={}",
                     cl, max_bytes, ctx.route_name
                 );
-                return Ok(ctx.error_response(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "payload too large",
-                ));
+                return Ok(ctx.error_response(StatusCode::PAYLOAD_TOO_LARGE, "payload too large"));
             }
         }
     }
@@ -102,14 +99,8 @@ pub async fn handle_request(
     let selection = match select_weighted_cluster(&route, &req_headers, &state) {
         Some(s) => s,
         None => {
-            warn!(
-                "proxy: no cluster resolved, route={}",
-                ctx.route_name
-            );
-            return Ok(ctx.error_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "service unavailable",
-            ));
+            warn!("proxy: no cluster resolved, route={}", ctx.route_name);
+            return Ok(ctx.error_response(StatusCode::SERVICE_UNAVAILABLE, "service unavailable"));
         }
     };
     let cluster_overridden = selection.overridden;
@@ -138,10 +129,9 @@ pub async fn handle_request(
     // header, so internal cluster names are not leaked to normal callers.
     if cluster_overridden {
         if let Ok(v) = HeaderValue::from_str(cluster.name()) {
-            final_resp.headers_mut().insert(
-                HeaderName::from_static("x-hermes-cluster"),
-                v,
-            );
+            final_resp
+                .headers_mut()
+                .insert(HeaderName::from_static("x-hermes-cluster"), v);
         }
         final_resp.headers_mut().insert(
             HeaderName::from_static("x-hermes-cluster-override"),
@@ -172,6 +162,7 @@ pub async fn handle_request(
     Ok(final_resp)
 }
 
+#[allow(clippy::result_large_err)]
 fn phase_route_match(
     ctx: &RequestContext,
     req_headers: &http::HeaderMap,
@@ -247,7 +238,10 @@ fn select_weighted_cluster(
                     "cluster" => override_val.to_owned(),
                 )
                 .increment(1);
-                return Some(ClusterSelection { cluster, overridden: true });
+                return Some(ClusterSelection {
+                    cluster,
+                    overridden: true,
+                });
             }
             warn!(
                 "proxy: cluster override header '{}' requested cluster '{}' but it does not exist, falling back to weighted selection",
@@ -257,7 +251,10 @@ fn select_weighted_cluster(
     }
 
     let name = route.cluster_selector.select()?;
-    state.upstream.get(name).map(|cluster| ClusterSelection { cluster, overridden: false })
+    state.upstream.get(name).map(|cluster| ClusterSelection {
+        cluster,
+        overridden: false,
+    })
 }
 
 /// Upstream phase: node selection + request forwarding with two-level retry.
@@ -307,10 +304,7 @@ async fn phase_upstream(
                     "proxy: failed to read request body, route={}, error={}",
                     ctx.route_name, e
                 );
-                return Err(ctx.error_response(
-                    StatusCode::BAD_REQUEST,
-                    "bad request",
-                ));
+                return Err(ctx.error_response(StatusCode::BAD_REQUEST, "bad request"));
             }
         };
         // Enforce body size limit on buffered body (catches chunked/no-Content-Length).
@@ -318,12 +312,11 @@ async fn phase_upstream(
             if bytes.len() as u64 > max {
                 debug!(
                     "proxy: buffered body too large, size={}, max={}, route={}",
-                    bytes.len(), max, ctx.route_name
+                    bytes.len(),
+                    max,
+                    ctx.route_name
                 );
-                return Err(ctx.error_response(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "payload too large",
-                ));
+                return Err(ctx.error_response(StatusCode::PAYLOAD_TOO_LARGE, "payload too large"));
             }
         }
         (Some(bytes), None)
@@ -333,8 +326,7 @@ async fn phase_upstream(
 
     // Pre-allocate a reusable buffer for upstream URI construction.
     // Avoids a `format!()` heap allocation inside the retry loop.
-    let mut upstream_uri_buf =
-        String::with_capacity(target_uri_capacity(&req_uri_pq));
+    let mut upstream_uri_buf = String::with_capacity(target_uri_capacity(&req_uri_pq));
 
     // Timeout durations: send = connect + write, read = wait for first response byte + body.
     let send_timeout = std::time::Duration::from_secs_f64(cfg.timeout.send);
@@ -357,21 +349,16 @@ async fn phase_upstream(
             }));
         }
 
-        let (target, mut guard, upstream_addr) = match select_healthy_node(
-            cluster,
-            ctx,
-            &tried_addrs,
-            cb_cfg,
-            node_count,
-        ) {
-            Some(v) => v,
-            None => {
-                warn!("proxy: no upstream available, route={}", ctx.route_name);
-                return Err(last_error.unwrap_or_else(|| {
-                    ctx.error_response(StatusCode::SERVICE_UNAVAILABLE, "service unavailable")
-                }));
-            }
-        };
+        let (target, mut guard, upstream_addr) =
+            match select_healthy_node(cluster, ctx, &tried_addrs, cb_cfg, node_count) {
+                Some(v) => v,
+                None => {
+                    warn!("proxy: no upstream available, route={}", ctx.route_name);
+                    return Err(last_error.unwrap_or_else(|| {
+                        ctx.error_response(StatusCode::SERVICE_UNAVAILABLE, "service unavailable")
+                    }));
+                }
+            };
 
         ctx.upstream_addr.clear();
         ctx.upstream_addr.push_str(&upstream_addr);
@@ -387,7 +374,9 @@ async fn phase_upstream(
         apply_host_header(&mut headers, &target, &upstream_addr);
         remove_hop_headers(&mut headers);
 
-        let mut builder = Request::builder().method(req_method.clone()).uri(&upstream_uri_buf);
+        let mut builder = Request::builder()
+            .method(req_method.clone())
+            .uri(&upstream_uri_buf);
         for (name, value) in &headers {
             builder = builder.header(name, value);
         }
@@ -396,7 +385,9 @@ async fn phase_upstream(
         let req_body: BoxBody = if let Some(ref bytes) = body_bytes {
             full_body(bytes.clone())
         } else {
-            streaming_body.take().unwrap_or_else(crate::proxy::context::empty_body)
+            streaming_body
+                .take()
+                .unwrap_or_else(crate::proxy::context::empty_body)
         };
 
         let upstream_req = match builder.body(req_body) {
@@ -406,10 +397,9 @@ async fn phase_upstream(
                     "proxy: failed to build upstream request, route={}, error={}",
                     ctx.route_name, e
                 );
-                return Err(ctx.error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error",
-                ));
+                return Err(
+                    ctx.error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+                );
             }
         };
 
@@ -424,11 +414,7 @@ async fn phase_upstream(
         // retries cannot extend the total wall-clock beyond the configured budget.
         let per_attempt_timeout = remaining;
 
-        let result = tokio::time::timeout(
-            per_attempt_timeout,
-            client.request(upstream_req),
-        )
-        .await;
+        let result = tokio::time::timeout(per_attempt_timeout, client.request(upstream_req)).await;
 
         match result {
             Ok(Ok(resp)) => {
@@ -437,10 +423,14 @@ async fn phase_upstream(
 
                 if let Some(cb) = cb_cfg {
                     if is_server_error(status) {
-                        cluster.circuit_breakers().record_failure(&upstream_addr, cb);
+                        cluster
+                            .circuit_breakers()
+                            .record_failure(&upstream_addr, cb);
                         guard.mark_failed();
                     } else {
-                        cluster.circuit_breakers().record_success(&upstream_addr, cb);
+                        cluster
+                            .circuit_breakers()
+                            .record_success(&upstream_addr, cb);
                     }
                 }
 
@@ -449,7 +439,11 @@ async fn phase_upstream(
                         if rcfg.retry_on_statuses.contains(&status) {
                             debug!(
                                 "proxy: retryable status {}, route={}, upstream={}, attempt={}/{}",
-                                status, ctx.route_name, upstream_addr, attempt + 1, max_retries
+                                status,
+                                ctx.route_name,
+                                upstream_addr,
+                                attempt + 1,
+                                max_retries
                             );
                             metrics::counter!(
                                 "gateway_upstream_retries_total",
@@ -474,7 +468,9 @@ async fn phase_upstream(
             Ok(Err(e)) => {
                 cluster.record_health_failure(&upstream_addr);
                 if let Some(cb) = cb_cfg {
-                    cluster.circuit_breakers().record_failure(&upstream_addr, cb);
+                    cluster
+                        .circuit_breakers()
+                        .record_failure(&upstream_addr, cb);
                 }
                 guard.mark_failed();
 
@@ -495,10 +491,7 @@ async fn phase_upstream(
                     )
                     .increment(1);
                     tried_addrs.push(upstream_addr);
-                    last_error = Some(ctx.error_response(
-                        StatusCode::BAD_GATEWAY,
-                        "bad gateway",
-                    ));
+                    last_error = Some(ctx.error_response(StatusCode::BAD_GATEWAY, "bad gateway"));
                     continue;
                 }
 
@@ -506,27 +499,27 @@ async fn phase_upstream(
                     "proxy: upstream error, route={}, upstream={}, error={}",
                     ctx.route_name, upstream_uri_buf, e
                 );
-                return Err(ctx.error_response(
-                    StatusCode::BAD_GATEWAY,
-                    "bad gateway",
-                ));
+                return Err(ctx.error_response(StatusCode::BAD_GATEWAY, "bad gateway"));
             }
             Err(_) => {
                 cluster.record_health_failure(&upstream_addr);
                 if let Some(cb) = cb_cfg {
-                    cluster.circuit_breakers().record_failure(&upstream_addr, cb);
+                    cluster
+                        .circuit_breakers()
+                        .record_failure(&upstream_addr, cb);
                 }
                 guard.mark_failed();
 
-                let can_retry = retry_cfg
-                    .map(|r| r.retry_on_timeout)
-                    .unwrap_or(false)
-                    && attempt < max_retries;
+                let can_retry =
+                    retry_cfg.map(|r| r.retry_on_timeout).unwrap_or(false) && attempt < max_retries;
 
                 if can_retry {
                     debug!(
                         "proxy: timeout (retrying), route={}, upstream={}, attempt={}/{}",
-                        ctx.route_name, upstream_addr, attempt + 1, max_retries
+                        ctx.route_name,
+                        upstream_addr,
+                        attempt + 1,
+                        max_retries
                     );
                     metrics::counter!(
                         "gateway_upstream_retries_total",
@@ -535,10 +528,8 @@ async fn phase_upstream(
                     )
                     .increment(1);
                     tried_addrs.push(upstream_addr);
-                    last_error = Some(ctx.error_response(
-                        StatusCode::GATEWAY_TIMEOUT,
-                        "gateway timeout",
-                    ));
+                    last_error =
+                        Some(ctx.error_response(StatusCode::GATEWAY_TIMEOUT, "gateway timeout"));
                     continue;
                 }
 
@@ -546,17 +537,12 @@ async fn phase_upstream(
                     "proxy: upstream timeout, route={}, upstream={}",
                     ctx.route_name, upstream_uri_buf
                 );
-                return Err(ctx.error_response(
-                    StatusCode::GATEWAY_TIMEOUT,
-                    "gateway timeout",
-                ));
+                return Err(ctx.error_response(StatusCode::GATEWAY_TIMEOUT, "gateway timeout"));
             }
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        ctx.error_response(StatusCode::BAD_GATEWAY, "bad gateway")
-    }))
+    Err(last_error.unwrap_or_else(|| ctx.error_response(StatusCode::BAD_GATEWAY, "bad gateway")))
 }
 
 /// Estimate capacity needed for the upstream URI buffer.
@@ -619,11 +605,7 @@ fn select_healthy_node(
     None
 }
 
-fn apply_host_header(
-    headers: &mut http::HeaderMap,
-    target: &UpstreamTarget,
-    upstream_addr: &str,
-) {
+fn apply_host_header(headers: &mut http::HeaderMap, target: &UpstreamTarget, upstream_addr: &str) {
     match &*target.pass_host {
         "node" => {
             headers.insert(
@@ -636,8 +618,7 @@ fn apply_host_header(
             if let Some(ref uh) = target.upstream_host {
                 headers.insert(
                     HOST,
-                    HeaderValue::from_str(uh)
-                        .unwrap_or_else(|_| HeaderValue::from_static("")),
+                    HeaderValue::from_str(uh).unwrap_or_else(|_| HeaderValue::from_static("")),
                 );
             }
         }
@@ -649,11 +630,7 @@ fn is_server_error(status: u16) -> bool {
     (500..600).contains(&status)
 }
 
-fn phase_on_response(
-    filters: &[Filter],
-    ctx: &RequestContext,
-    resp: &mut Response<BoxBody>,
-) {
+fn phase_on_response(filters: &[Filter], ctx: &RequestContext, resp: &mut Response<BoxBody>) {
     for filter in filters.iter().rev() {
         filter.on_response(ctx, resp);
     }
@@ -828,13 +805,11 @@ fn negotiate_encoding(accept_encoding: &str) -> Option<&'static str> {
         let q: f32 = tokens
             .next()
             .and_then(|params| {
-                params
-                    .split(';')
-                    .find_map(|p| {
-                        let p = p.trim();
-                        p.strip_prefix("q=")
-                            .and_then(|v| v.trim().parse::<f32>().ok())
-                    })
+                params.split(';').find_map(|p| {
+                    let p = p.trim();
+                    p.strip_prefix("q=")
+                        .and_then(|v| v.trim().parse::<f32>().ok())
+                })
             })
             .unwrap_or(1.0);
 
@@ -873,10 +848,7 @@ fn negotiate_encoding(accept_encoding: &str) -> Option<&'static str> {
 /// Compression is controlled at the route level (`enable_compression`).
 /// The caller is responsible for checking that compression is enabled
 /// and that the upstream hasn't already set `Content-Encoding`.
-fn try_compress_response(
-    resp: Response<BoxBody>,
-    accept_encoding: &str,
-) -> Response<BoxBody> {
+fn try_compress_response(resp: Response<BoxBody>, accept_encoding: &str) -> Response<BoxBody> {
     // Negotiate encoding.
     let encoding = match negotiate_encoding(accept_encoding) {
         Some(e) => e,
@@ -908,19 +880,17 @@ fn try_compress_response(
     };
 
     // Update headers for compressed response.
-    parts.headers.insert(
-        CONTENT_ENCODING,
-        HeaderValue::from_static(encoding),
-    );
+    parts
+        .headers
+        .insert(CONTENT_ENCODING, HeaderValue::from_static(encoding));
     // Remove Content-Length — compressed size is unknown for streaming.
     parts.headers.remove(CONTENT_LENGTH);
     // HTTP/1.x: set chunked transfer encoding since we don't know final size.
     // HTTP/2+ does not use Transfer-Encoding (framing is handled by the protocol).
     if version == http::Version::HTTP_11 || version == http::Version::HTTP_10 {
-        parts.headers.insert(
-            TRANSFER_ENCODING,
-            HeaderValue::from_static("chunked"),
-        );
+        parts
+            .headers
+            .insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
     }
 
     Response::from_parts(parts, compressed_body)
@@ -979,10 +949,7 @@ impl futures_util::Stream for BodyStream {
                     continue;
                 }
                 std::task::Poll::Ready(Some(Err(e))) => {
-                    return std::task::Poll::Ready(Some(Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ))));
+                    return std::task::Poll::Ready(Some(Err(std::io::Error::other(e.to_string()))));
                 }
                 std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
                 std::task::Poll::Pending => return std::task::Poll::Pending,

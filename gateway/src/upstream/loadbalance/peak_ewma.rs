@@ -25,9 +25,7 @@ impl InstanceWithLatency {
     fn new(instance: UpstreamInstance, initial_latency_ns: u64) -> Self {
         Self {
             instance,
-            ewma_latency_ns: Arc::new(AtomicU64::new(
-                (initial_latency_ns as f64).to_bits(),
-            )),
+            ewma_latency_ns: Arc::new(AtomicU64::new((initial_latency_ns as f64).to_bits())),
         }
     }
 
@@ -233,7 +231,11 @@ mod tests {
             }
             drop(guard);
         }
-        assert!(fast_count > 30, "fast should be preferred, got {}", fast_count);
+        assert!(
+            fast_count > 30,
+            "fast should be preferred, got {}",
+            fast_count
+        );
     }
 
     #[test]
@@ -242,10 +244,7 @@ mod tests {
         lb.update_instances(vec![inst("A", 100), inst("B", 100)]);
 
         let instances = lb.instances.load();
-        let inst_a = instances
-            .iter()
-            .find(|i| i.instance.host == "A")
-            .unwrap();
+        let inst_a = instances.iter().find(|i| i.instance.host == "A").unwrap();
         for _ in 0..10 {
             inst_a.instance.inc_active();
         }
@@ -258,7 +257,11 @@ mod tests {
             }
             drop(guard);
         }
-        assert!(b_count > 40, "B should be heavily preferred, got {}", b_count);
+        assert!(
+            b_count > 40,
+            "B should be heavily preferred, got {}",
+            b_count
+        );
     }
 
     #[test]

@@ -59,11 +59,8 @@ pub fn get_container_cpu_limit() -> usize {
 /// Parse CPU value — supports "4" (cores) or "4000m" (millicores) format.
 fn parse_cpu_value(value: &str) -> Option<usize> {
     let value = value.trim();
-    if value.ends_with('m') {
-        value[..value.len() - 1]
-            .parse::<usize>()
-            .ok()
-            .map(|m| m / 1000)
+    if let Some(stripped) = value.strip_suffix('m') {
+        stripped.parse::<usize>().ok().map(|m| m / 1000)
     } else {
         value.parse::<usize>().ok()
     }
@@ -71,7 +68,7 @@ fn parse_cpu_value(value: &str) -> Option<usize> {
 
 /// Parse cgroup v2 `cpu.max` — format: "quota period" or "max period".
 fn parse_cgroup_v2_cpu(content: &str) -> Option<usize> {
-    let parts: Vec<&str> = content.trim().split_whitespace().collect();
+    let parts: Vec<&str> = content.split_whitespace().collect();
     if parts.len() >= 2 {
         if parts[0] == "max" {
             return None; // unlimited

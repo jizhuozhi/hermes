@@ -71,17 +71,21 @@ impl CompiledHeaderMatcher {
     pub fn matches(&self, header_value: Option<&str>) -> bool {
         let raw_match = match self.match_type {
             HeaderMatchType::Present => header_value.is_some(),
-            HeaderMatchType::Exact => header_value.map_or(false, |v| v == self.value),
-            HeaderMatchType::Prefix => header_value.map_or(false, |v| v.starts_with(&self.value)),
+            HeaderMatchType::Exact => header_value.is_some_and(|v| v == self.value),
+            HeaderMatchType::Prefix => header_value.is_some_and(|v| v.starts_with(&self.value)),
             HeaderMatchType::Regex => {
                 if let Some(ref re) = self.regex {
-                    header_value.map_or(false, |v| re.is_match(v))
+                    header_value.is_some_and(|v| re.is_match(v))
                 } else {
                     false
                 }
             }
         };
-        if self.invert { !raw_match } else { raw_match }
+        if self.invert {
+            !raw_match
+        } else {
+            raw_match
+        }
     }
 }
 
@@ -193,8 +197,10 @@ impl RadixTree {
         };
         let cluster_selector = ClusterSelector::new(std::mem::take(&mut config.clusters));
         let cluster_override_header = config.cluster_override_header.take();
-        let request_header_ops = compile_header_ops(&config.request_header_transforms, &config.name);
-        let response_header_ops = compile_header_ops(&config.response_header_transforms, &config.name);
+        let request_header_ops =
+            compile_header_ops(&config.request_header_transforms, &config.name);
+        let response_header_ops =
+            compile_header_ops(&config.response_header_transforms, &config.name);
         let compiled = Arc::new(CompiledRoute {
             name: config.name,
             uri: config.uri,
@@ -269,7 +275,11 @@ fn build_prefix_weights(clusters: &[WeightedCluster]) -> Vec<u64> {
 }
 
 fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// Parse a URI pattern into segments and whether it's a wildcard.
@@ -502,10 +512,7 @@ fn compile_header_matchers(config: &RouteConfig) -> Result<Vec<CompiledHeaderMat
             };
             let regex = if matches!(match_type, HeaderMatchType::Regex) {
                 Some(regex::Regex::new(&h.value).map_err(|e| {
-                    format!(
-                        "header '{}' has invalid regex '{}': {}",
-                        h.name, h.value, e
-                    )
+                    format!("header '{}' has invalid regex '{}': {}", h.name, h.value, e)
                 })?)
             } else {
                 None
@@ -556,7 +563,11 @@ fn compile_header_ops(transforms: &[HeaderTransform], route_name: &str) -> Vec<H
                     http::HeaderValue::from_static("")
                 }
             };
-            Some(HeaderOp { name, value, action })
+            Some(HeaderOp {
+                name,
+                value,
+                action,
+            })
         })
         .collect()
 }

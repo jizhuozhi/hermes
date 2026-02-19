@@ -54,11 +54,7 @@ impl RequestContext {
     /// Build a JSON error response and record metrics in one place.
     /// This is the single exit point for all error paths — eliminates
     /// the 5x duplicated metrics + response-building code.
-    pub fn error_response(
-        &self,
-        status: StatusCode,
-        msg: &str,
-    ) -> hyper::Response<BoxBody> {
+    pub fn error_response(&self, status: StatusCode, msg: &str) -> hyper::Response<BoxBody> {
         let mut buf = itoa::Buffer::new();
         let status_str = buf.format(status.as_u16());
 

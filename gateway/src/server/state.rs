@@ -109,10 +109,7 @@ impl GatewayState {
                 .clone()
                 .expect("instance_count must be Some when instance_registry is enabled");
             let registry = InstanceRegistry::new(etcd, &config.instance_registry, ic);
-            info!(
-                "instance_registry: prepared, id={}",
-                registry.instance_id(),
-            );
+            info!("instance_registry: prepared, id={}", registry.instance_id(),);
             Some(Arc::new(registry))
         } else {
             info!("instance_registry: disabled (standalone rate limiting)");
@@ -124,8 +121,7 @@ impl GatewayState {
 
         let route_table = RouteTable::new(&config.domains, instance_count.clone());
         let metrics = Metrics::install();
-        metrics::gauge!("gateway_config_routes_total")
-            .set(config.total_route_count() as f64);
+        metrics::gauge!("gateway_config_routes_total").set(config.total_route_count() as f64);
 
         Ok(Self {
             config: Arc::new(ArcSwap::new(Arc::new(config))),
@@ -179,7 +175,10 @@ impl GatewayState {
         cfg.domains.retain(|d| d.name != domain_name);
 
         if cfg.domains.len() == before {
-            info!("config: domain delete ignored (not found), name={}", domain_name);
+            info!(
+                "config: domain delete ignored (not found), name={}",
+                domain_name
+            );
             return;
         }
 
@@ -211,7 +210,10 @@ impl GatewayState {
         cfg.clusters.retain(|c| c.name != cluster_name);
 
         if cfg.clusters.len() == before {
-            info!("config: cluster delete ignored (not found), name={}", cluster_name);
+            info!(
+                "config: cluster delete ignored (not found), name={}",
+                cluster_name
+            );
             return;
         }
 

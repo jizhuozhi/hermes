@@ -1,5 +1,5 @@
-use crate::{config, discovery, server, upstream};
 use crate::config::{DiscoveryArgs, GatewayConfig, UpstreamNode};
+use crate::{config, discovery, server, upstream};
 use anyhow::Result;
 use arc_swap::ArcSwap;
 use std::collections::{HashMap, HashSet};
@@ -81,10 +81,7 @@ fn init_tracing() {
         .finish(std::io::stdout());
 
     tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info")),
-        )
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
@@ -156,7 +153,8 @@ async fn poll_consul_services(
             Err(e) => {
                 tracing::warn!(
                     "discovery: consul: query failed, service={}, error={}",
-                    service_name, e
+                    service_name,
+                    e
                 );
                 metrics::counter!(
                     "gateway_consul_poll_total",
@@ -197,7 +195,7 @@ async fn poll_consul_services(
                 Some(args) => metadata_matches(&n.service_meta, &args.metadata_match),
                 None => true,
             })
-            .map(|n| to_upstream_node(n))
+            .map(to_upstream_node)
             .collect();
 
         tracing::info!(
@@ -307,10 +305,7 @@ fn start_config_watcher(state: &server::GatewayState, shutdown: &Arc<Notify>) {
 
         // --- Watch loop with reconnect ---
         loop {
-            tracing::info!(
-                "etcd: watch starting, revision={}",
-                revision
-            );
+            tracing::info!("etcd: watch starting, revision={}", revision);
 
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -345,7 +340,7 @@ fn start_config_watcher(state: &server::GatewayState, shutdown: &Arc<Notify>) {
                                 ).increment(1);
                             }
                             Some(config::etcd::ConfigEvent::ClusterUpsert(cluster)) => {
-                                state.upsert_cluster(cluster).await;
+                                state.upsert_cluster(*cluster).await;
                                 metrics::counter!(
                                     "gateway_config_reloads_total",
                                     "source" => "etcd", "result" => "success",
@@ -446,10 +441,7 @@ fn start_health_check_loop(cluster_store: &upstream::ClusterStore, shutdown: &Ar
     });
 }
 
-async fn start_instance_registry(
-    infra: &server::InfraState,
-    shutdown: &Arc<Notify>,
-) -> Result<()> {
+async fn start_instance_registry(infra: &server::InfraState, shutdown: &Arc<Notify>) -> Result<()> {
     let Some(registry) = infra.instance_registry() else {
         return Ok(());
     };

@@ -36,11 +36,10 @@ pub enum Filter {
 impl std::fmt::Debug for Filter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Filter::RateLimit { config, .. } => {
-                f.debug_struct("RateLimit")
-                    .field("mode", &config.mode)
-                    .finish()
-            }
+            Filter::RateLimit { config, .. } => f
+                .debug_struct("RateLimit")
+                .field("mode", &config.mode)
+                .finish(),
         }
     }
 }
@@ -48,10 +47,7 @@ impl std::fmt::Debug for Filter {
 impl Filter {
     /// Request phase — runs before upstream selection.
     /// Return `FilterResult::Reject` to short-circuit.
-    pub async fn on_request(
-        &self,
-        ctx: &mut RequestContext,
-    ) -> FilterResult {
+    pub async fn on_request(&self, ctx: &mut RequestContext) -> FilterResult {
         match self {
             Filter::RateLimit { config, limiter } => {
                 rate_limit_on_request(config, limiter, ctx).await
@@ -61,11 +57,7 @@ impl Filter {
 
     /// Response phase — runs after upstream response, before sending to client.
     /// Can mutate the response (add headers, compress body, etc.).
-    pub fn on_response(
-        &self,
-        _ctx: &RequestContext,
-        _resp: &mut hyper::Response<BoxBody>,
-    ) {
+    pub fn on_response(&self, _ctx: &RequestContext, _resp: &mut hyper::Response<BoxBody>) {
         match self {
             Filter::RateLimit { .. } => {
                 // No response-phase logic for rate limiting.
@@ -83,6 +75,7 @@ impl Filter {
 ///
 /// Order matters:
 /// 1. RateLimit  (reject early, save upstream resources)
+///
 /// Future:
 /// 2. IpRestriction
 /// 3. Cors
@@ -114,12 +107,17 @@ async fn rate_limit_on_request(
     limiter: &RateLimiter,
     ctx: &mut RequestContext,
 ) -> FilterResult {
-    let key = RateLimiter::extract_key(config, &ctx.route_name, &ctx.host, &ctx.uri_path, &ctx.client_ip);
+    let key = RateLimiter::extract_key(
+        config,
+        &ctx.route_name,
+        &ctx.host,
+        &ctx.uri_path,
+        &ctx.client_ip,
+    );
 
     if !limiter.check(config, &key).await {
         let rejected_code = config.rejected_code;
-        let status =
-            StatusCode::from_u16(rejected_code).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
+        let status = StatusCode::from_u16(rejected_code).unwrap_or(StatusCode::TOO_MANY_REQUESTS);
 
         tracing::debug!(
             "filter: rate_limit: rejected, route={}, key={}",

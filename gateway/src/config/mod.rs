@@ -24,7 +24,10 @@ impl GatewayConfig {
                 None => anyhow::bail!("config file has no extension, use .toml or .json"),
             }
         } else {
-            tracing::info!("config file not found at {}, using defaults", path.display());
+            tracing::info!(
+                "config file not found at {}, using defaults",
+                path.display()
+            );
             GatewayConfig::default()
         };
 
@@ -116,7 +119,8 @@ impl GatewayConfig {
                 if route.uri.is_empty() {
                     anyhow::bail!(
                         "route '{}' in domain '{}' has empty uri",
-                        route.name, domain.name
+                        route.name,
+                        domain.name
                     );
                 }
                 // Validate that referenced clusters exist.
@@ -124,25 +128,29 @@ impl GatewayConfig {
                     if !cluster_names.contains(wc.name.as_str()) {
                         anyhow::bail!(
                             "route '{}' in domain '{}' references unknown cluster '{}'",
-                            route.name, domain.name, wc.name
+                            route.name,
+                            domain.name,
+                            wc.name
                         );
                     }
                     if wc.weight == 0 {
                         anyhow::bail!(
                             "route '{}' in domain '{}' has cluster '{}' with weight 0",
-                            route.name, domain.name, wc.name
+                            route.name,
+                            domain.name,
+                            wc.name
                         );
                     }
                 }
                 // Validate rate_limit config consistency.
                 if let Some(ref rl) = route.rate_limit {
-                    if rl.mode == "count" || rl.mode == "sliding_window" {
-                        if rl.count.is_none() || rl.time_window.is_none() {
-                            anyhow::bail!(
-                                "route '{}' in domain '{}': rate_limit mode '{}' requires 'count' and 'time_window'",
-                                route.name, domain.name, rl.mode
-                            );
-                        }
+                    if (rl.mode == "count" || rl.mode == "sliding_window")
+                        && (rl.count.is_none() || rl.time_window.is_none())
+                    {
+                        anyhow::bail!(
+                            "route '{}' in domain '{}': rate_limit mode '{}' requires 'count' and 'time_window'",
+                            route.name, domain.name, rl.mode
+                        );
                     }
                 }
             }
@@ -153,18 +161,5 @@ impl GatewayConfig {
     /// Total route count across all domains.
     pub fn total_route_count(&self) -> usize {
         self.domains.iter().map(|d| d.routes.len()).sum()
-    }
-}
-
-impl Default for GatewayConfig {
-    fn default() -> Self {
-        Self {
-            consul: ConsulConfig::default(),
-            etcd: EtcdConfig::default(),
-            domains: Vec::new(),
-            clusters: Vec::new(),
-            registration: RegistrationConfig::default(),
-            instance_registry: InstanceRegistryConfig::default(),
-        }
     }
 }

@@ -1,13 +1,16 @@
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-use hermes_gateway::server;
 use anyhow::Result;
 use clap::Parser;
+use hermes_gateway::server;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "hermes-gateway", about = "High-performance API gateway data plane")]
+#[command(
+    name = "hermes-gateway",
+    about = "High-performance API gateway data plane"
+)]
 struct Cli {
     /// Path to gateway config file
     #[arg(short, long, default_value = "config.toml")]

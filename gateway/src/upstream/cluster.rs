@@ -109,8 +109,7 @@ impl Cluster {
         );
         let scheme: Arc<str> = Arc::from(config.scheme.as_str());
         let pass_host: Arc<str> = Arc::from(config.pass_host.as_str());
-        let upstream_host: Option<Arc<str>> =
-            config.upstream_host.as_deref().map(Arc::from);
+        let upstream_host: Option<Arc<str>> = config.upstream_host.as_deref().map(Arc::from);
 
         Self {
             config: Arc::new(config),
@@ -321,8 +320,7 @@ impl Cluster {
 
         let scheme: Arc<str> = Arc::from(new_config.scheme.as_str());
         let pass_host: Arc<str> = Arc::from(new_config.pass_host.as_str());
-        let upstream_host: Option<Arc<str>> =
-            new_config.upstream_host.as_deref().map(Arc::from);
+        let upstream_host: Option<Arc<str>> = new_config.upstream_host.as_deref().map(Arc::from);
 
         Self {
             config: Arc::new(new_config),
@@ -346,11 +344,17 @@ pub struct ClusterStore {
     clusters: Arc<DashMap<String, Cluster>>,
 }
 
-impl ClusterStore {
-    pub fn new() -> Self {
+impl Default for ClusterStore {
+    fn default() -> Self {
         Self {
             clusters: Arc::new(DashMap::new()),
         }
+    }
+}
+
+impl ClusterStore {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Get a cluster by name.

@@ -41,11 +41,17 @@ pub enum BreakerCheck {
     Rejected,
 }
 
-impl CircuitBreakerRegistry {
-    pub fn new() -> Self {
+impl Default for CircuitBreakerRegistry {
+    fn default() -> Self {
         Self {
             breakers: DashMap::new(),
         }
+    }
+}
+
+impl CircuitBreakerRegistry {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Check whether a request to `node_key` is allowed.

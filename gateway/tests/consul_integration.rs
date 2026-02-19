@@ -24,17 +24,18 @@ async fn start_consul() -> (ConsulClient, String, ContainerAsync<GenericImage>) 
         .expect("failed to start consul container");
 
     let host = container.get_host().await.expect("get host");
-    let port = container
-        .get_host_port_ipv4(8500)
-        .await
-        .expect("get port");
+    let port = container.get_host_port_ipv4(8500).await.expect("get port");
 
     let base_url = format!("http://{}:{}", host, port);
 
     // Wait for Consul to be ready
     let http = reqwest::Client::new();
     for _ in 0..30 {
-        if let Ok(resp) = http.get(format!("{}/v1/status/leader", base_url)).send().await {
+        if let Ok(resp) = http
+            .get(format!("{}/v1/status/leader", base_url))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
                 if body.len() > 2 {
@@ -126,11 +127,7 @@ async fn test_consul_register_multiple_instances() {
 
     // Register 3 instances of the same service
     for i in 1..=3 {
-        let reg = sample_registration(
-            &format!("multi-{}", i),
-            "multi-service",
-            8080 + i,
-        );
+        let reg = sample_registration(&format!("multi-{}", i), "multi-service", 8080 + i);
         client.register_service(&reg).await.unwrap();
         client.pass_ttl(&format!("multi-{}", i)).await.unwrap();
     }

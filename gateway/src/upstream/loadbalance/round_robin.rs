@@ -15,8 +15,8 @@ struct BalancerState {
     total_weight: u64,
 }
 
-impl RoundRobinBalancer {
-    pub fn new() -> Self {
+impl Default for RoundRobinBalancer {
+    fn default() -> Self {
         Self {
             state: ArcSwap::from_pointee(BalancerState {
                 instances: Vec::new(),
@@ -25,6 +25,12 @@ impl RoundRobinBalancer {
             }),
             counter: AtomicU64::new(0),
         }
+    }
+}
+
+impl RoundRobinBalancer {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn update_instances(&self, instances: Vec<UpstreamInstance>) {
