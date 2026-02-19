@@ -35,18 +35,13 @@ impl GatewayConfig {
         config.apply_env_overrides();
 
         config.validate()?;
-        let total_routes: usize = config.domains.iter().map(|d| d.routes.len()).sum();
-        tracing::info!(
-            domains = config.domains.len(),
-            total_routes = total_routes,
-            "loaded gateway configuration"
-        );
+        tracing::info!("loaded gateway infrastructure configuration");
         Ok(config)
     }
 
     /// Apply environment variable overrides for connection/infra settings.
-    /// Business config (domains, routes, clusters) should be managed via
-    /// config files or the control plane — not environment variables.
+    /// Business config (domains, routes, clusters) is managed exclusively
+    /// via the control plane (etcd) — never from local files or env vars.
     fn apply_env_overrides(&mut self) {
         // Consul
         if let Ok(v) = std::env::var("HERMES_CONSUL_ADDRESS") {
@@ -102,64 +97,16 @@ impl GatewayConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
-        // Collect all known cluster names for cross-reference checking.
-        let cluster_names: std::collections::HashSet<&str> =
-            self.clusters.iter().map(|c| c.name.as_str()).collect();
-
-        for domain in &self.domains {
-            if domain.hosts.is_empty() {
-                anyhow::bail!("domain '{}' has no hosts defined", domain.name);
-            }
-            for host in &domain.hosts {
-                if host.is_empty() {
-                    anyhow::bail!("domain '{}' has an empty host entry", domain.name);
-                }
-            }
-            for route in &domain.routes {
-                if route.uri.is_empty() {
-                    anyhow::bail!(
-                        "route '{}' in domain '{}' has empty uri",
-                        route.name,
-                        domain.name
-                    );
-                }
-                // Validate that referenced clusters exist.
-                for wc in &route.clusters {
-                    if !cluster_names.contains(wc.name.as_str()) {
-                        anyhow::bail!(
-                            "route '{}' in domain '{}' references unknown cluster '{}'",
-                            route.name,
-                            domain.name,
-                            wc.name
-                        );
-                    }
-                    if wc.weight == 0 {
-                        anyhow::bail!(
-                            "route '{}' in domain '{}' has cluster '{}' with weight 0",
-                            route.name,
-                            domain.name,
-                            wc.name
-                        );
-                    }
-                }
-                // Validate rate_limit config consistency.
-                if let Some(ref rl) = route.rate_limit {
-                    if (rl.mode == "count" || rl.mode == "sliding_window")
-                        && (rl.count.is_none() || rl.time_window.is_none())
-                    {
-                        anyhow::bail!(
-                            "route '{}' in domain '{}': rate_limit mode '{}' requires 'count' and 'time_window'",
-                            route.name, domain.name, rl.mode
-                        );
-                    }
+        // Infrastructure-only validation.
+        // Business config (domains, clusters, routes) is loaded exclusively
+        // from etcd and validated at the control-plane level.
+        if !self.etcd.endpoints.is_empty() {
+            for ep in &self.etcd.endpoints {
+                if ep.is_empty() {
+                    anyhow::bail!("etcd endpoint cannot be empty");
                 }
             }
         }
         Ok(())
-    }
-
-    /// Total route count across all domains.
-    pub fn total_route_count(&self) -> usize {
-        self.domains.iter().map(|d| d.routes.len()).sum()
     }
 }

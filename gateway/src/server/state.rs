@@ -21,12 +21,27 @@ use tracing::info;
 pub struct RoutingState {
     pub route_table: Arc<ArcSwap<RouteTable>>,
     instance_count: Option<Arc<AtomicU32>>,
+    /// Snapshot of domains currently loaded (from etcd).
+    domains: Arc<ArcSwap<Vec<DomainConfig>>>,
 }
 
 impl RoutingState {
-    fn rebuild_table(&self, config: &GatewayConfig) {
-        let new_table = RouteTable::new(&config.domains, self.instance_count.clone());
+    fn rebuild_table(&self, domains: &[DomainConfig]) {
+        let new_table = RouteTable::new(domains, self.instance_count.clone());
         self.route_table.store(Arc::new(new_table));
+        self.domains.store(Arc::new(domains.to_vec()));
+    }
+
+    pub fn domain_count(&self) -> usize {
+        self.domains.load().len()
+    }
+
+    pub fn route_count(&self) -> usize {
+        self.domains.load().iter().map(|d| d.routes.len()).sum()
+    }
+
+    pub fn domains(&self) -> arc_swap::Guard<Arc<Vec<DomainConfig>>> {
+        self.domains.load()
     }
 }
 
@@ -117,11 +132,12 @@ impl GatewayState {
         };
 
         let cluster_store = ClusterStore::new();
-        cluster_store.init_from_configs(&config.clusters);
+        // No local domains/clusters — all business config comes from etcd.
 
-        let route_table = RouteTable::new(&config.domains, instance_count.clone());
+        let empty_domains: Vec<DomainConfig> = Vec::new();
+        let route_table = RouteTable::new(&empty_domains, instance_count.clone());
         let metrics = Metrics::install();
-        metrics::gauge!("gateway_config_routes_total").set(config.total_route_count() as f64);
+        metrics::gauge!("gateway_config_routes_total").set(0.0);
 
         Ok(Self {
             config: Arc::new(ArcSwap::new(Arc::new(config))),
@@ -129,6 +145,7 @@ impl GatewayState {
             routing: RoutingState {
                 route_table: Arc::new(ArcSwap::new(Arc::new(route_table))),
                 instance_count,
+                domains: Arc::new(ArcSwap::new(Arc::new(Vec::new()))),
             },
             upstream: cluster_store,
             infra: InfraState {
@@ -140,41 +157,30 @@ impl GatewayState {
         })
     }
 
-    /// Full config reload (from file).
-    pub async fn reload_config(&self, new_config: GatewayConfig) {
-        let _guard = self.config_mu.lock().await;
-
-        for cluster in &new_config.clusters {
-            self.upstream.upsert(cluster.clone());
-        }
-
-        self.routing.rebuild_table(&new_config);
-        self.commit_config(new_config);
-        info!("config: reloaded");
-    }
-
-    /// Incrementally upsert a single domain.
+    /// Incrementally upsert a single domain (from etcd).
     pub async fn upsert_domain(&self, domain: DomainConfig) {
         let _guard = self.config_mu.lock().await;
-        let mut cfg = self.clone_config();
+        let mut domains = (**self.routing.domains.load()).clone();
 
-        match cfg.domains.iter_mut().find(|d| d.name == domain.name) {
+        match domains.iter_mut().find(|d| d.name == domain.name) {
             Some(existing) => *existing = domain.clone(),
-            None => cfg.domains.push(domain.clone()),
+            None => domains.push(domain.clone()),
         }
 
-        self.rebuild_and_commit(cfg);
+        self.routing.rebuild_table(&domains);
+        self.update_route_metric();
+        self.infra.trigger_discovery();
         info!("config: domain upserted, name={}", domain.name);
     }
 
-    /// Incrementally delete a single domain.
+    /// Incrementally delete a single domain (from etcd).
     pub async fn delete_domain(&self, domain_name: &str) {
         let _guard = self.config_mu.lock().await;
-        let mut cfg = self.clone_config();
-        let before = cfg.domains.len();
-        cfg.domains.retain(|d| d.name != domain_name);
+        let mut domains = (**self.routing.domains.load()).clone();
+        let before = domains.len();
+        domains.retain(|d| d.name != domain_name);
 
-        if cfg.domains.len() == before {
+        if domains.len() == before {
             info!(
                 "config: domain delete ignored (not found), name={}",
                 domain_name
@@ -182,63 +188,37 @@ impl GatewayState {
             return;
         }
 
-        self.rebuild_and_commit(cfg);
+        self.routing.rebuild_table(&domains);
+        self.update_route_metric();
+        self.infra.trigger_discovery();
         info!("config: domain deleted, name={}", domain_name);
     }
 
-    /// Incrementally upsert a single cluster.
+    /// Incrementally upsert a single cluster (from etcd).
     pub async fn upsert_cluster(&self, cluster: ClusterConfig) {
         let _guard = self.config_mu.lock().await;
-        let mut cfg = self.clone_config();
-
         self.upstream.upsert(cluster.clone());
-
-        match cfg.clusters.iter_mut().find(|c| c.name == cluster.name) {
-            Some(existing) => *existing = cluster.clone(),
-            None => cfg.clusters.push(cluster.clone()),
-        }
-
-        self.commit_config(cfg);
+        self.infra.trigger_discovery();
         info!("config: cluster upserted, name={}", cluster.name);
     }
 
-    /// Incrementally delete a single cluster.
+    /// Incrementally delete a single cluster (from etcd).
     pub async fn delete_cluster(&self, cluster_name: &str) {
         let _guard = self.config_mu.lock().await;
-        let mut cfg = self.clone_config();
-        let before = cfg.clusters.len();
-        cfg.clusters.retain(|c| c.name != cluster_name);
-
-        if cfg.clusters.len() == before {
+        if !self.upstream.remove(cluster_name) {
             info!(
                 "config: cluster delete ignored (not found), name={}",
                 cluster_name
             );
             return;
         }
-
-        self.upstream.remove(cluster_name);
-        self.commit_config(cfg);
+        self.infra.trigger_discovery();
         info!("config: cluster deleted, name={}", cluster_name);
     }
 
     // -- private helpers --
 
-    fn clone_config(&self) -> GatewayConfig {
-        (**self.config.load()).clone()
-    }
-
-    /// Store config, rebuild route table, update metric, trigger discovery.
-    fn rebuild_and_commit(&self, cfg: GatewayConfig) {
-        self.routing.rebuild_table(&cfg);
-        self.commit_config(cfg);
-    }
-
-    /// Store config, update route-count metric, trigger discovery.
-    fn commit_config(&self, cfg: GatewayConfig) {
-        let route_count = cfg.total_route_count();
-        self.config.store(Arc::new(cfg));
-        metrics::gauge!("gateway_config_routes_total").set(route_count as f64);
-        self.infra.trigger_discovery();
+    fn update_route_metric(&self) {
+        metrics::gauge!("gateway_config_routes_total").set(self.routing.route_count() as f64);
     }
 }

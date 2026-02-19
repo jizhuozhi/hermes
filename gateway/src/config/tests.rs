@@ -10,226 +10,35 @@ fn test_load_toml_config() {
 }
 
 #[test]
-fn test_load_json_config() {
+fn test_load_json_infra_config() {
     let json = r#"{
         "consul": { "address": "http://127.0.0.1:8500" },
-        "etcd": { "endpoints": ["http://127.0.0.1:2379"] },
-        "domains": [{
-            "name": "test",
-            "hosts": ["api.example.com"],
-            "routes": [{
-                "name": "catch-all",
-                "uri": "/*",
-                "clusters": [{"name": "backend", "weight": 100}]
-            }]
-        }],
-        "clusters": [{
-            "name": "backend",
-            "type": "roundrobin",
-            "nodes": [{"host": "127.0.0.1", "port": 8081, "weight": 100}]
-        }]
+        "etcd": { "endpoints": ["http://127.0.0.1:2379"] }
     }"#;
-    let tmp = std::env::temp_dir().join("hermes_test_config.json");
+    let tmp = std::env::temp_dir().join("hermes_test_infra_config.json");
     std::fs::write(&tmp, json).unwrap();
     let cfg = GatewayConfig::load(&tmp).unwrap();
-    assert_eq!(cfg.domains.len(), 1);
-    assert_eq!(cfg.clusters.len(), 1);
-    assert_eq!(cfg.domains[0].name, "test");
+    assert_eq!(cfg.consul.address, "http://127.0.0.1:8500");
+    assert_eq!(cfg.etcd.endpoints.len(), 1);
     std::fs::remove_file(&tmp).ok();
 }
 
 #[test]
-fn test_validate_empty_hosts_fails() {
+fn test_validate_empty_etcd_endpoint_fails() {
     let cfg = GatewayConfig {
-        consul: ConsulConfig::default(),
-        etcd: EtcdConfig::default(),
-        domains: vec![DomainConfig {
-            name: "bad".into(),
-            hosts: vec![],
-            routes: vec![],
-        }],
-        clusters: vec![],
-        registration: RegistrationConfig::default(),
-        instance_registry: InstanceRegistryConfig::default(),
+        etcd: EtcdConfig {
+            endpoints: vec!["".into()],
+            ..EtcdConfig::default()
+        },
+        ..GatewayConfig::default()
     };
     assert!(cfg.validate().is_err());
 }
 
 #[test]
-fn test_validate_empty_host_entry_fails() {
-    let cfg = GatewayConfig {
-        consul: ConsulConfig::default(),
-        etcd: EtcdConfig::default(),
-        domains: vec![DomainConfig {
-            name: "bad".into(),
-            hosts: vec!["".into()],
-            routes: vec![],
-        }],
-        clusters: vec![],
-        registration: RegistrationConfig::default(),
-        instance_registry: InstanceRegistryConfig::default(),
-    };
-    assert!(cfg.validate().is_err());
-}
-
-#[test]
-fn test_validate_empty_uri_fails() {
-    let cfg = GatewayConfig {
-        consul: ConsulConfig::default(),
-        etcd: EtcdConfig::default(),
-        domains: vec![DomainConfig {
-            name: "test".into(),
-            hosts: vec!["example.com".into()],
-            routes: vec![RouteConfig {
-                id: "1".into(),
-                name: "bad-route".into(),
-                uri: "".into(),
-                methods: vec![],
-                headers: vec![],
-                priority: 0,
-                clusters: vec![WeightedCluster {
-                    name: "c1".into(),
-                    weight: 100,
-                }],
-                rate_limit: None,
-                cluster_override_header: None,
-                request_header_transforms: vec![],
-                response_header_transforms: vec![],
-                status: 1,
-                plugins: None,
-                max_body_bytes: None,
-                enable_compression: false,
-            }],
-        }],
-        clusters: vec![],
-        registration: RegistrationConfig::default(),
-        instance_registry: InstanceRegistryConfig::default(),
-    };
-    assert!(cfg.validate().is_err());
-}
-
-#[test]
-fn test_validate_valid_config() {
-    let cfg = GatewayConfig {
-        consul: ConsulConfig::default(),
-        etcd: EtcdConfig::default(),
-        domains: vec![DomainConfig {
-            name: "test".into(),
-            hosts: vec!["example.com".into()],
-            routes: vec![RouteConfig {
-                id: "1".into(),
-                name: "route1".into(),
-                uri: "/*".into(),
-                methods: vec![],
-                headers: vec![],
-                priority: 0,
-                clusters: vec![WeightedCluster {
-                    name: "c1".into(),
-                    weight: 100,
-                }],
-                rate_limit: None,
-                cluster_override_header: None,
-                request_header_transforms: vec![],
-                response_header_transforms: vec![],
-                status: 1,
-                plugins: None,
-                max_body_bytes: None,
-                enable_compression: false,
-            }],
-        }],
-        clusters: vec![ClusterConfig {
-            name: "c1".into(),
-            lb_type: "roundrobin".into(),
-            ..ClusterConfig::default()
-        }],
-        registration: RegistrationConfig::default(),
-        instance_registry: InstanceRegistryConfig::default(),
-    };
+fn test_validate_infra_only_ok() {
+    let cfg = GatewayConfig::default();
     assert!(cfg.validate().is_ok());
-}
-
-#[test]
-fn test_total_route_count() {
-    let cfg = GatewayConfig {
-        consul: ConsulConfig::default(),
-        etcd: EtcdConfig::default(),
-        domains: vec![
-            DomainConfig {
-                name: "d1".into(),
-                hosts: vec!["a.com".into()],
-                routes: vec![
-                    RouteConfig {
-                        id: "1".into(),
-                        name: "r1".into(),
-                        uri: "/a".into(),
-                        methods: vec![],
-                        headers: vec![],
-                        priority: 0,
-                        clusters: vec![WeightedCluster {
-                            name: "c".into(),
-                            weight: 100,
-                        }],
-                        rate_limit: None,
-                        cluster_override_header: None,
-                        request_header_transforms: vec![],
-                        response_header_transforms: vec![],
-                        status: 1,
-                        plugins: None,
-                        max_body_bytes: None,
-                        enable_compression: false,
-                    },
-                    RouteConfig {
-                        id: "2".into(),
-                        name: "r2".into(),
-                        uri: "/b".into(),
-                        methods: vec![],
-                        headers: vec![],
-                        priority: 0,
-                        clusters: vec![WeightedCluster {
-                            name: "c".into(),
-                            weight: 100,
-                        }],
-                        rate_limit: None,
-                        cluster_override_header: None,
-                        request_header_transforms: vec![],
-                        response_header_transforms: vec![],
-                        status: 1,
-                        plugins: None,
-                        max_body_bytes: None,
-                        enable_compression: false,
-                    },
-                ],
-            },
-            DomainConfig {
-                name: "d2".into(),
-                hosts: vec!["b.com".into()],
-                routes: vec![RouteConfig {
-                    id: "3".into(),
-                    name: "r3".into(),
-                    uri: "/c".into(),
-                    methods: vec![],
-                    headers: vec![],
-                    priority: 0,
-                    clusters: vec![WeightedCluster {
-                        name: "c".into(),
-                        weight: 100,
-                    }],
-                    rate_limit: None,
-                    cluster_override_header: None,
-                    request_header_transforms: vec![],
-                    response_header_transforms: vec![],
-                    status: 1,
-                    plugins: None,
-                    max_body_bytes: None,
-                    enable_compression: false,
-                }],
-            },
-        ],
-        clusters: vec![],
-        registration: RegistrationConfig::default(),
-        instance_registry: InstanceRegistryConfig::default(),
-    };
-    assert_eq!(cfg.total_route_count(), 3);
 }
 
 #[test]
@@ -306,4 +115,25 @@ fn test_unsupported_format() {
     std::fs::write(&tmp, "key: value").unwrap();
     assert!(GatewayConfig::load(&tmp).is_err());
     std::fs::remove_file(&tmp).ok();
+}
+
+/// Ensure unknown fields (e.g. old `domains`/`clusters` in config file) are
+/// silently ignored rather than causing a parse error, so existing config
+/// files with leftover business-config sections still work.
+#[test]
+fn test_ignores_unknown_fields_in_toml() {
+    let toml_str = r#"
+[consul]
+address = "http://127.0.0.1:8500"
+
+[[domains]]
+name = "leftover"
+hosts = ["example.com"]
+
+[[clusters]]
+name = "leftover"
+"#;
+    // serde(default) + deny_unknown_fields is NOT set, so this should parse fine.
+    let cfg: GatewayConfig = toml::from_str(toml_str).unwrap();
+    assert_eq!(cfg.consul.address, "http://127.0.0.1:8500");
 }

@@ -23,14 +23,13 @@ pub fn handle_admin(
             .unwrap()),
 
         "/ready" | "/readyz" => {
-            let cfg = state.config.load();
-            let route_count = cfg.total_route_count();
+            let domain_count = state.routing.domain_count();
+            let route_count = state.routing.route_count();
             Ok(Response::builder()
                 .status(200)
                 .body(full_body(format!(
                     r#"{{"status":"ready","domains":{},"total_routes":{}}}"#,
-                    cfg.domains.len(),
-                    route_count,
+                    domain_count, route_count,
                 )))
                 .unwrap())
         }
@@ -45,9 +44,8 @@ pub fn handle_admin(
         }
 
         "/domains" => {
-            let cfg = state.config.load();
-            let domains: Vec<serde_json::Value> = cfg
-                .domains
+            let domains = state.routing.domains();
+            let domains_json: Vec<serde_json::Value> = domains
                 .iter()
                 .map(|d| {
                     serde_json::json!({
@@ -76,7 +74,7 @@ pub fn handle_admin(
                 })
                 .collect();
 
-            let body = serde_json::to_string_pretty(&domains).unwrap_or_default();
+            let body = serde_json::to_string_pretty(&domains_json).unwrap_or_default();
             Ok(Response::builder()
                 .status(200)
                 .header("content-type", "application/json")

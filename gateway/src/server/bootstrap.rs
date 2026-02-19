@@ -120,18 +120,20 @@ async fn poll_consul_services(
     };
 
     let cluster_descriptors: Vec<ClusterDiscovery> = {
-        let cfg = config.load();
-        cfg.clusters
-            .iter()
-            .filter(|c| c.discovery_type.as_deref() == Some("consul"))
-            .filter_map(|c| {
-                c.service_name.as_ref().map(|s| ClusterDiscovery {
-                    cluster_name: c.name.clone(),
-                    service_name: s.clone(),
-                    discovery_args: c.discovery_args.clone(),
-                })
-            })
-            .collect()
+        let mut descriptors = Vec::new();
+        cluster_store.for_each(|_name, cluster| {
+            let cfg = cluster.config();
+            if cfg.discovery_type.as_deref() == Some("consul") {
+                if let Some(ref s) = cfg.service_name {
+                    descriptors.push(ClusterDiscovery {
+                        cluster_name: cfg.name.clone(),
+                        service_name: s.clone(),
+                        discovery_args: cfg.discovery_args.clone(),
+                    });
+                }
+            }
+        });
+        descriptors
     };
 
     let unique_services: Vec<&str> = {

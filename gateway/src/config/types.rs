@@ -23,18 +23,6 @@ pub struct GatewayConfig {
     #[serde(default)]
     pub etcd: EtcdConfig,
 
-    /// Domain definitions — business domain-partitioned route groups.
-    /// Each domain can match multiple hosts and owns its route table.
-    /// Following the nginx model, all routes belong to a domain.
-    /// The special `_default` domain with `hosts: ["_"]` acts as the
-    /// catch-all fallback (analogous to nginx `server_name _`).
-    #[serde(default)]
-    pub domains: Vec<DomainConfig>,
-
-    /// Cluster definitions (independent upstream resources).
-    #[serde(default)]
-    pub clusters: Vec<ClusterConfig>,
-
     /// Self-registration to Consul so upstream gateways can discover us.
     #[serde(default)]
     pub registration: RegistrationConfig,
