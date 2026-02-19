@@ -41,24 +41,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── OIDC Provider (Dex) ────────────────────────
-  #
-  # Lightweight OIDC IdP with a static password user for local dev.
-  # Login: admin@hermes.local / admin
-
-  dex:
-    image: dexidp/dex:v2.39.1
-    ports:
-      - "5556:5556"
-    volumes:
-      - ./dex.docker.yaml:/etc/dex/config.docker.yaml:ro
-    command: ["dex", "serve", "/etc/dex/config.docker.yaml"]
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5556/dex/.well-known/openid-configuration"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   # ── Application ─────────────────────────────────
 
   server:
@@ -69,15 +51,11 @@ services:
       - "9080:9080"
     environment:
       HERMES_POSTGRES_DSN: "postgres://postgres:postgres@postgres:5432/hermes?sslmode=disable"
-      OIDC_ENABLED: "true"
-      OIDC_ISSUER: "http://dex:5556/dex"
-      OIDC_CLIENT_ID: "hermes"
-      OIDC_CLIENT_SECRET: "hermes-secret"
-      HERMES_INITIAL_ADMIN_USERS: "admin@hermes.local"
+      HERMES_AUTH_MODE: "builtin"
+      HERMES_INITIAL_ADMIN_EMAIL: "admin@hermes.local"
+      HERMES_INITIAL_ADMIN_PASSWORD: "admin"
     depends_on:
       postgres:
-        condition: service_healthy
-      dex:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/api/auth/config"]

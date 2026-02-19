@@ -8,6 +8,7 @@ import (
 	"github.com/jizhuozhi/hermes/server/internal/store"
 
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // MemberHandler handles namespace member management and user admin APIs.
@@ -221,6 +222,241 @@ func (h *MemberHandler) SetAdmin(w http.ResponseWriter, r *http.Request) {
 		action = "grant_admin"
 	}
 	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", userSub, action, Operator(r))
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// ForcePasswordChange sets must_change_password flag for a builtin user (admin only).
+// The targeted user will be required to change their password on next login.
+func (h *MemberHandler) ForcePasswordChange(w http.ResponseWriter, r *http.Request) {
+	userSub := r.PathValue("sub")
+	if userSub == "" {
+		ErrJSON(w, http.StatusBadRequest, "user sub is required")
+		return
+	}
+
+	var req struct {
+		MustChangePassword bool `json:"must_change_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ErrJSON(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	if err := h.store.SetMustChangePassword(r.Context(), userSub, req.MustChangePassword); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			ErrJSON(w, http.StatusNotFound, err.Error())
+			return
+		}
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	action := "clear_force_password_change"
+	if req.MustChangePassword {
+		action = "force_password_change"
+	}
+	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", userSub, action, Operator(r))
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// CreateBuiltinUser creates a new builtin (email/password) user (admin only).
+// Only valid when auth_mode is "builtin".
+func (h *MemberHandler) CreateBuiltinUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+		IsAdmin  bool   `json:"is_admin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ErrJSON(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if req.Email == "" || req.Password == "" {
+		ErrJSON(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+	if len(req.Password) < 6 {
+		ErrJSON(w, http.StatusBadRequest, "password must be at least 6 characters")
+		return
+	}
+
+	sub := "builtin:" + req.Email
+	existing, err := h.store.GetUser(r.Context(), sub)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing != nil {
+		ErrJSON(w, http.StatusConflict, "user already exists")
+		return
+	}
+
+	username := req.Name
+	if username == "" {
+		username = strings.Split(req.Email, "@")[0]
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, "password hash failed")
+		return
+	}
+
+	user := &store.User{
+		Sub:                sub,
+		Username:           strings.Split(req.Email, "@")[0],
+		Email:              req.Email,
+		Name:               username,
+		IsAdmin:            req.IsAdmin,
+		MustChangePassword: true,
+	}
+	if err := h.store.UpsertUser(r.Context(), user); err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.store.UpdateUserPassword(r.Context(), sub, string(hash)); err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", sub, "create_builtin_user", Operator(r))
+	JSON(w, http.StatusCreated, map[string]any{"sub": sub, "email": req.Email})
+}
+
+// DeleteUser removes a user (admin only).
+func (h *MemberHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	userSub := r.PathValue("sub")
+	if userSub == "" {
+		ErrJSON(w, http.StatusBadRequest, "user sub is required")
+		return
+	}
+
+	// Prevent deleting yourself.
+	id := IdentityFromContext(r.Context())
+	if id != nil && id.Subject == userSub {
+		ErrJSON(w, http.StatusBadRequest, "cannot delete yourself")
+		return
+	}
+
+	if err := h.store.DeleteUser(r.Context(), userSub); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			ErrJSON(w, http.StatusNotFound, err.Error())
+			return
+		}
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", userSub, "delete_user", Operator(r))
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// ResetUserPassword resets a builtin user's password (admin only).
+// The user will be flagged with must_change_password = true.
+func (h *MemberHandler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	userSub := r.PathValue("sub")
+	if userSub == "" {
+		ErrJSON(w, http.StatusBadRequest, "user sub is required")
+		return
+	}
+
+	// Only builtin users have passwords.
+	if !strings.HasPrefix(userSub, "builtin:") {
+		ErrJSON(w, http.StatusBadRequest, "can only reset password for builtin users")
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ErrJSON(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.NewPassword == "" {
+		ErrJSON(w, http.StatusBadRequest, "new_password is required")
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		ErrJSON(w, http.StatusBadRequest, "password must be at least 6 characters")
+		return
+	}
+
+	// Verify user exists.
+	user, err := h.store.GetUser(r.Context(), userSub)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if user == nil {
+		ErrJSON(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, "password hash failed")
+		return
+	}
+	if err := h.store.UpdateUserPassword(r.Context(), userSub, string(hash)); err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Force the user to change password on next login.
+	_ = h.store.SetMustChangePassword(r.Context(), userSub, true)
+
+	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", userSub, "admin_reset_password", Operator(r))
+	JSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// UpdateUser updates a builtin user's profile (email, name, is_admin) (admin only).
+func (h *MemberHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	userSub := r.PathValue("sub")
+	if userSub == "" {
+		ErrJSON(w, http.StatusBadRequest, "user sub is required")
+		return
+	}
+
+	var req struct {
+		Email   *string `json:"email"`
+		Name    *string `json:"name"`
+		IsAdmin *bool   `json:"is_admin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ErrJSON(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	user, err := h.store.GetUser(r.Context(), userSub)
+	if err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if user == nil {
+		ErrJSON(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if req.Email != nil {
+		user.Email = strings.TrimSpace(strings.ToLower(*req.Email))
+	}
+	if req.Name != nil {
+		user.Name = strings.TrimSpace(*req.Name)
+	}
+	if req.IsAdmin != nil {
+		user.IsAdmin = *req.IsAdmin
+	}
+
+	if err := h.store.UpsertUser(r.Context(), user); err != nil {
+		ErrJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// If is_admin changed, also update via SetUserAdmin to ensure consistency.
+	if req.IsAdmin != nil {
+		_ = h.store.SetUserAdmin(r.Context(), userSub, *req.IsAdmin)
+	}
+
+	_ = h.store.InsertAuditLog(r.Context(), "_global", "user", userSub, "update_user", Operator(r))
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

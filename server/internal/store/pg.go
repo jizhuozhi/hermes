@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -146,8 +147,19 @@ CREATE TABLE IF NOT EXISTS users (
     email      TEXT NOT NULL DEFAULT '',
     name       TEXT NOT NULL DEFAULT '',
     is_admin   BOOLEAN NOT NULL DEFAULT FALSE,
+    password_hash TEXT NOT NULL DEFAULT '',
     last_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Migration: add password_hash if not exists (idempotent).
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
+EXCEPTION WHEN others THEN NULL;
+END $$;
+-- Migration: add must_change_password flag (idempotent).
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS namespace_members (
     namespace  TEXT NOT NULL,
@@ -175,6 +187,16 @@ CREATE TABLE IF NOT EXISTS grafana_dashboards (
     name      TEXT NOT NULL,
     url       TEXT NOT NULL
 );
+
+-- ── JWT Signing Keys (builtin auth) ─────────────
+CREATE TABLE IF NOT EXISTS jwt_signing_keys (
+    kid        TEXT PRIMARY KEY,
+    secret     BYTEA NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'active',   -- 'active' or 'retired'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ                        -- NULL for active, set when retired
+);
+CREATE INDEX IF NOT EXISTS idx_jwt_keys_status ON jwt_signing_keys(status);
 `
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("pg migrate: %w", err)
@@ -1141,15 +1163,18 @@ func (s *PgStore) DeleteAPICredential(ctx context.Context, ns string, id int64) 
 // ── Users (OIDC-synced) ──────────────────────────
 
 func (s *PgStore) UpsertUser(ctx context.Context, user *User) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (sub, username, email, name, is_admin, last_seen)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		INSERT INTO users (sub, username, email, name, is_admin, must_change_password, last_seen)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (sub) DO UPDATE SET
 			username  = EXCLUDED.username,
 			email     = EXCLUDED.email,
 			name      = EXCLUDED.name,
 			last_seen = NOW()`,
-		user.Sub, user.Username, user.Email, user.Name, user.IsAdmin)
+		user.Sub, user.Username, user.Email, user.Name, user.IsAdmin, user.MustChangePassword)
 	if err != nil {
 		return fmt.Errorf("pg upsert user: %w", err)
 	}
@@ -1157,10 +1182,13 @@ func (s *PgStore) UpsertUser(ctx context.Context, user *User) error {
 }
 
 func (s *PgStore) GetUser(ctx context.Context, sub string) (*User, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var u User
 	err := s.db.QueryRowContext(ctx,
-		`SELECT sub, username, email, name, is_admin, last_seen FROM users WHERE sub = $1`, sub).
-		Scan(&u.Sub, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.LastSeen)
+		`SELECT sub, username, email, name, is_admin, must_change_password, last_seen FROM users WHERE sub = $1`, sub).
+		Scan(&u.Sub, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.MustChangePassword, &u.LastSeen)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1172,7 +1200,7 @@ func (s *PgStore) GetUser(ctx context.Context, sub string) (*User, error) {
 
 func (s *PgStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT sub, username, email, name, is_admin, last_seen FROM users ORDER BY username`)
+		`SELECT sub, username, email, name, is_admin, must_change_password, last_seen FROM users ORDER BY username`)
 	if err != nil {
 		return nil, fmt.Errorf("pg list users: %w", err)
 	}
@@ -1181,7 +1209,7 @@ func (s *PgStore) ListUsers(ctx context.Context) ([]User, error) {
 	var result []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.Sub, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.LastSeen); err != nil {
+		if err := rows.Scan(&u.Sub, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.MustChangePassword, &u.LastSeen); err != nil {
 			return nil, fmt.Errorf("pg scan user: %w", err)
 		}
 		result = append(result, u)
@@ -1200,6 +1228,208 @@ func (s *PgStore) SetUserAdmin(ctx context.Context, sub string, isAdmin bool) er
 		return fmt.Errorf("user not found")
 	}
 	return nil
+}
+
+func (s *PgStore) GetUserPasswordHash(ctx context.Context, sub string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var hash string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT password_hash FROM users WHERE sub = $1`, sub).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("pg get password hash: %w", err)
+	}
+	return hash, nil
+}
+
+func (s *PgStore) UpdateUserPassword(ctx context.Context, sub, passwordHash string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = $1 WHERE sub = $2`, passwordHash, sub)
+	if err != nil {
+		return fmt.Errorf("pg update password: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+func (s *PgStore) SetMustChangePassword(ctx context.Context, sub string, must bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET must_change_password = $1 WHERE sub = $2`, must, sub)
+	if err != nil {
+		return fmt.Errorf("pg set must_change_password: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+func (s *PgStore) DeleteUser(ctx context.Context, sub string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM users WHERE sub = $1`, sub)
+	if err != nil {
+		return fmt.Errorf("pg delete user: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// ── JWT Signing Keys ─────────────────────────────
+
+func (s *PgStore) GetActiveSigningKey(ctx context.Context) (*JWTSigningKey, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var k JWTSigningKey
+	var expiresAt sql.NullTime
+	err := s.db.QueryRowContext(ctx,
+		`SELECT kid, secret, status, created_at, expires_at FROM jwt_signing_keys WHERE status = 'active' ORDER BY created_at DESC LIMIT 1`).
+		Scan(&k.KID, &k.Secret, &k.Status, &k.CreatedAt, &expiresAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pg get active signing key: %w", err)
+	}
+	if expiresAt.Valid {
+		k.ExpiresAt = &expiresAt.Time
+	}
+	return &k, nil
+}
+
+func (s *PgStore) GetSigningKeyByID(ctx context.Context, kid string) (*JWTSigningKey, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var k JWTSigningKey
+	var expiresAt sql.NullTime
+	err := s.db.QueryRowContext(ctx,
+		`SELECT kid, secret, status, created_at, expires_at FROM jwt_signing_keys
+		 WHERE kid = $1 AND (expires_at IS NULL OR expires_at > NOW())`, kid).
+		Scan(&k.KID, &k.Secret, &k.Status, &k.CreatedAt, &expiresAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pg get signing key by id: %w", err)
+	}
+	if expiresAt.Valid {
+		k.ExpiresAt = &expiresAt.Time
+	}
+	return &k, nil
+}
+
+func (s *PgStore) ListValidSigningKeys(ctx context.Context) ([]JWTSigningKey, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT kid, secret, status, created_at, expires_at FROM jwt_signing_keys
+		 WHERE status = 'active' OR (status = 'retired' AND expires_at > NOW())
+		 ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("pg list valid signing keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []JWTSigningKey
+	for rows.Next() {
+		var k JWTSigningKey
+		var expiresAt sql.NullTime
+		if err := rows.Scan(&k.KID, &k.Secret, &k.Status, &k.CreatedAt, &expiresAt); err != nil {
+			return nil, fmt.Errorf("pg scan signing key: %w", err)
+		}
+		if expiresAt.Valid {
+			k.ExpiresAt = &expiresAt.Time
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func (s *PgStore) CreateSigningKey(ctx context.Context, key *JWTSigningKey) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO jwt_signing_keys (kid, secret, status, created_at, expires_at)
+		 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (kid) DO NOTHING`,
+		key.KID, key.Secret, key.Status, key.CreatedAt, key.ExpiresAt)
+	if err != nil {
+		return fmt.Errorf("pg create signing key: %w", err)
+	}
+	return nil
+}
+
+func (s *PgStore) RotateSigningKey(ctx context.Context, gracePeriod time.Duration) (*JWTSigningKey, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("pg begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Retire all currently active keys with a grace period.
+	expiresAt := time.Now().Add(gracePeriod)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE jwt_signing_keys SET status = 'retired', expires_at = $1 WHERE status = 'active'`,
+		expiresAt); err != nil {
+		return nil, fmt.Errorf("pg retire old keys: %w", err)
+	}
+
+	// Generate new active key.
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+
+	kid := generateKeyID()
+	now := time.Now()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO jwt_signing_keys (kid, secret, status, created_at) VALUES ($1, $2, 'active', $3)`,
+		kid, secret, now); err != nil {
+		return nil, fmt.Errorf("pg insert new signing key: %w", err)
+	}
+
+	// Clean up expired keys (housekeeping).
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM jwt_signing_keys WHERE status = 'retired' AND expires_at < NOW()`); err != nil {
+		s.logger.Warnf("cleanup expired jwt keys: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("pg commit rotate key: %w", err)
+	}
+
+	return &JWTSigningKey{KID: kid, Secret: secret, Status: "active", CreatedAt: now}, nil
+}
+
+func generateKeyID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return fmt.Sprintf("k-%x", b)
 }
 
 // ── Namespace Members ────────────────────────────

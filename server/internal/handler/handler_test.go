@@ -273,6 +273,33 @@ func (m *mockStore) ListUsers(_ context.Context) ([]store.User, error)     { ret
 func (m *mockStore) SetUserAdmin(_ context.Context, sub string, isAdmin bool) error {
 	return nil
 }
+func (m *mockStore) GetUserPasswordHash(_ context.Context, sub string) (string, error) {
+	return "", nil
+}
+func (m *mockStore) UpdateUserPassword(_ context.Context, sub, passwordHash string) error {
+	return nil
+}
+func (m *mockStore) SetMustChangePassword(_ context.Context, sub string, must bool) error {
+	return nil
+}
+func (m *mockStore) DeleteUser(_ context.Context, sub string) error {
+	return nil
+}
+func (m *mockStore) GetActiveSigningKey(_ context.Context) (*store.JWTSigningKey, error) {
+	return nil, nil
+}
+func (m *mockStore) GetSigningKeyByID(_ context.Context, kid string) (*store.JWTSigningKey, error) {
+	return nil, nil
+}
+func (m *mockStore) ListValidSigningKeys(_ context.Context) ([]store.JWTSigningKey, error) {
+	return nil, nil
+}
+func (m *mockStore) CreateSigningKey(_ context.Context, key *store.JWTSigningKey) error {
+	return nil
+}
+func (m *mockStore) RotateSigningKey(_ context.Context, gracePeriod time.Duration) (*store.JWTSigningKey, error) {
+	return &store.JWTSigningKey{KID: "mock-kid"}, nil
+}
 
 func (m *mockStore) ListNamespaceMembers(_ context.Context, ns string) ([]store.NamespaceMember, error) {
 	return nil, nil

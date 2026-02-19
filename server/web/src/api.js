@@ -15,7 +15,7 @@ export function getNamespace() {
   return currentNamespace
 }
 
-// ─── OIDC Auth ───────────────────────────────────────────────────────
+// ─── Auth ─────────────────────────────────────────────────────────────
 
 let _authConfig = null
 
@@ -24,6 +24,55 @@ export async function getAuthConfig() {
   const res = await axios.get('/api/auth/config')
   _authConfig = res.data
   return _authConfig
+}
+
+// Reset cached auth config (used when auth mode may have changed).
+export function resetAuthConfig() {
+  _authConfig = null
+}
+
+// Builtin login: POST /api/auth/login with email + password.
+export async function builtinLogin(email, password) {
+  const res = await axios.post('/api/auth/login', { email, password })
+  const { access_token, must_change_password } = res.data
+  if (!access_token) throw new Error('No access token in response')
+  setToken(access_token)
+
+  const payload = parseJwtPayload(access_token)
+  if (payload) {
+    setUser({
+      sub: payload.sub,
+      name: payload.preferred_username || payload.name || payload.email || payload.sub,
+      email: payload.email || '',
+    })
+  }
+
+  if (must_change_password) {
+    localStorage.setItem('hermes_must_change_password', '1')
+  }
+
+  return { must_change_password: !!must_change_password }
+}
+
+// Change password: POST /api/auth/change-password.
+export async function changePassword(oldPassword, newPassword) {
+  const token = getToken()
+  const res = await axios.post('/api/auth/change-password', {
+    old_password: oldPassword,
+    new_password: newPassword,
+  }, {
+    headers: { Authorization: 'Bearer ' + token },
+  })
+  localStorage.removeItem('hermes_must_change_password')
+  return res.data
+}
+
+export function getMustChangePassword() {
+  return localStorage.getItem('hermes_must_change_password') === '1'
+}
+
+export function clearMustChangePassword() {
+  localStorage.removeItem('hermes_must_change_password')
 }
 
 export function getToken() {
@@ -141,7 +190,7 @@ api.interceptors.response.use(
     const config = error.config
     if (error.response?.status === 401 && getToken() && !config._retried) {
       config._retried = true
-      // Token might have just expired; try refresh once.
+      // Token might have just expired; try refresh once (OIDC only).
       const ok = await refreshAccessToken()
       if (ok) {
         config.headers['Authorization'] = 'Bearer ' + getToken()
@@ -226,7 +275,12 @@ export default {
 
   // Users
   listUsers: () => api.get('/users'),
+  createBuiltinUser: (email, password, name, isAdmin) => api.post('/users', { email, password, name, is_admin: isAdmin }),
+  updateUser: (sub, data) => api.put(`/users/${sub}`, data),
+  deleteUser: (sub) => api.delete(`/users/${sub}`),
   setAdmin: (sub, isAdmin) => api.put(`/users/${sub}/admin`, { is_admin: isAdmin }),
+  forcePasswordChange: (sub, must) => api.put(`/users/${sub}/force-password-change`, { must_change_password: must }),
+  resetUserPassword: (sub, newPassword) => api.put(`/users/${sub}/reset-password`, { new_password: newPassword }),
 
   // WhoAmI
   whoami: () => api.get('/whoami'),

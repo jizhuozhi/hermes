@@ -4,6 +4,23 @@ server:
 postgres:
   dsn: "postgres://postgres@localhost:5432/hermes?sslmode=disable"
 
+# Authentication mode: "builtin", "oidc", or "" (disabled).
+# Can also be set via HERMES_AUTH_MODE env var.
+auth_mode: ""
+
+# ── Built-in authentication (username/password, no external IdP) ──────
+# Signing keys are auto-generated and persisted in PostgreSQL (jwt_signing_keys table).
+# Tokens survive restarts; multiple replicas share the same key.
+# Use POST /api/auth/rotate-key (admin only) to rotate keys at runtime.
+# The initial admin user is flagged with must_change_password=true and will be
+# forced to change their password on first login.
+# Admins can also force any builtin user to change password via the API:
+#   PUT /api/v1/users/{sub}/force-password-change  {"must_change_password": true}
+# builtin_auth:
+#   initial_admin_email: "admin@hermes.local"
+#   initial_admin_password: "admin"
+
+# ── OIDC authentication (external IdP like Keycloak, Dex, Okta) ──────
 oidc:
   enabled: false
   issuer: "https://your-oidc-provider.example.com/realms/hermes"
@@ -11,15 +28,5 @@ oidc:
   client_secret: "YOUR_OIDC_CLIENT_SECRET"
   # initial_admin_users: comma-separated OIDC usernames/emails to seed as super admin on first login.
   # Only takes effect on the user's FIRST login; subsequent logins never change admin status.
-  # Admins can be managed dynamically via the UI afterwards. Can also be set via HERMES_INITIAL_ADMIN_USERS env var.
+  # Admins can be managed dynamically via the UI afterwards. Can also be set via OIDC_INITIAL_ADMIN_USERS env var.
   # initial_admin_users: "alice@example.com,bob"
-
-# HMAC-SHA256 authentication is now managed via the web UI (Settings → Credentials).
-# Create AK/SK pairs in the UI and configure them on controllers.
-
-# grafana:
-#   dashboards:
-#     - name: "Gateway Overview"
-#       url: "https://your-grafana.example.com/d/abc123?orgId=1&kiosk"
-#     - name: "Upstream Health"
-#       url: "https://your-grafana.example.com/d/def456?orgId=1&kiosk"

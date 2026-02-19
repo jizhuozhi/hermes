@@ -111,11 +111,35 @@ type Store interface {
 	UpdateAPICredential(ctx context.Context, ns string, cred *APICredential) error
 	DeleteAPICredential(ctx context.Context, ns string, id int64) error
 
-	// ── Users (OIDC-synced) ───────────────────────
+	// ── Users (OIDC-synced or builtin) ─────────────────
 	UpsertUser(ctx context.Context, user *User) error // INSERT sets is_admin; UPDATE preserves existing
 	GetUser(ctx context.Context, sub string) (*User, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	SetUserAdmin(ctx context.Context, sub string, isAdmin bool) error
+	// GetUserPasswordHash returns the bcrypt hash for builtin auth (empty if not set).
+	GetUserPasswordHash(ctx context.Context, sub string) (string, error)
+	// UpdateUserPassword sets the password hash for a builtin user.
+	UpdateUserPassword(ctx context.Context, sub, passwordHash string) error
+	// SetMustChangePassword sets or clears the must_change_password flag for a user.
+	SetMustChangePassword(ctx context.Context, sub string, must bool) error
+	// DeleteUser removes a user by sub. Returns error if not found.
+	DeleteUser(ctx context.Context, sub string) error
+
+	// ── JWT Signing Keys (builtin auth) ─────────────
+	// GetActiveSigningKey returns the current active key for token signing.
+	// Returns nil if no active key exists.
+	GetActiveSigningKey(ctx context.Context) (*JWTSigningKey, error)
+	// GetSigningKeyByID returns a key by its kid. Used for token verification.
+	GetSigningKeyByID(ctx context.Context, kid string) (*JWTSigningKey, error)
+	// ListValidSigningKeys returns all keys that are active or not yet expired.
+	// Used as fallback when kid is missing from a token.
+	ListValidSigningKeys(ctx context.Context) ([]JWTSigningKey, error)
+	// CreateSigningKey inserts a new signing key. If an active key exists,
+	// it is retired with the given grace period.
+	CreateSigningKey(ctx context.Context, key *JWTSigningKey) error
+	// RotateSigningKey creates a new active key and retires the old one.
+	// The old key remains valid for gracePeriod (so in-flight tokens don't break).
+	RotateSigningKey(ctx context.Context, gracePeriod time.Duration) (*JWTSigningKey, error)
 
 	// ── Namespace Members ─────────────────────────
 	ListNamespaceMembers(ctx context.Context, ns string) ([]NamespaceMember, error)
@@ -293,16 +317,29 @@ func (c *APICredential) HasScope(scope string) bool {
 	return false
 }
 
+// ── JWT Signing Keys (builtin auth) ──────────────
+
+// JWTSigningKey represents a persistent HMAC-SHA256 signing key for builtin auth.
+// Keys have a lifecycle: active → retired → expired (deleted by reaper).
+type JWTSigningKey struct {
+	KID       string     `json:"kid"`        // unique key identifier, included in JWT header
+	Secret    []byte     `json:"-"`          // raw 256-bit HMAC key (never serialized to JSON)
+	Status    string     `json:"status"`     // "active" or "retired"
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"` // nil for active key; set when retired
+}
+
 // ── Users (synced from OIDC) ─────────────────────
 
 // User represents a user synced from the OIDC provider.
 type User struct {
-	Sub      string    `json:"sub"`
-	Username string    `json:"username"`
-	Email    string    `json:"email"`
-	Name     string    `json:"name"`
-	IsAdmin  bool      `json:"is_admin"`
-	LastSeen time.Time `json:"last_seen"`
+	Sub                string    `json:"sub"`
+	Username           string    `json:"username"`
+	Email              string    `json:"email"`
+	Name               string    `json:"name"`
+	IsAdmin            bool      `json:"is_admin"`
+	MustChangePassword bool      `json:"must_change_password"`
+	LastSeen           time.Time `json:"last_seen"`
 }
 
 // GroupBinding maps an OIDC group to a role within a namespace.

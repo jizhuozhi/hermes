@@ -1691,6 +1691,474 @@ func TestE2E_OIDC_HMACCoexistence(t *testing.T) {
 	resp.Body.Close()
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  Builtin Auth E2E Tests
+//
+//  These tests exercise the built-in username/password authentication
+//  system: login, JWT verification, key rotation, and token survival
+//  across server restarts.
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Builtin Login ───────────────────────────────────────────────────
+
+// TestE2E_Builtin_LoginAndAccess verifies the builtin login flow:
+// login with email/password → receive JWT → use JWT to access protected endpoints.
+func TestE2E_Builtin_LoginAndAccess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv.stop()
+
+	base := srv.baseURL
+
+	// Auth config should report builtin mode.
+	resp := apiGet(t, base, "/api/auth/config")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	data := readJSON(t, resp)
+	assert.Equal(t, "builtin", data["mode"])
+
+	// Login with correct credentials.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	tokenData := readJSON(t, resp)
+	accessToken := tokenData["access_token"].(string)
+	assert.NotEmpty(t, accessToken)
+
+	// Use the token to access a protected endpoint (admin can list users).
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", accessToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Login with wrong password → 401.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "wrong",
+	})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
+
+	// Login with non-existent user → 401.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "nobody@hermes.local", "password": "test",
+	})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
+}
+
+// ── Builtin Key Rotation ────────────────────────────────────────────
+
+// TestE2E_Builtin_KeyRotation verifies:
+// 1. Tokens issued before rotation remain valid (grace period).
+// 2. New tokens are signed with the new key.
+// 3. Both old and new tokens work simultaneously during grace period.
+func TestE2E_Builtin_KeyRotation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv.stop()
+
+	base := srv.baseURL
+
+	// Create HMAC credential for admin API access (bootstrap mode).
+	resp := apiPost(t, base, "/api/v1/credentials", map[string]any{
+		"description": "admin-hmac",
+		"scopes":      []string{"config:read", "admin:users"},
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	cred := readJSON(t, resp)
+	hmacAK := cred["access_key"].(string)
+	hmacSK := cred["secret_key"].(string)
+
+	// Login and get token (pre-rotation).
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	preRotationToken := readJSON(t, resp)["access_token"].(string)
+
+	// Token works before rotation.
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", preRotationToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Rotate the signing key via HMAC-authenticated admin API.
+	resp = hmacRequest(t, "POST", base+"/api/auth/rotate-key", hmacAK, hmacSK, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	rotateData := readJSON(t, resp)
+	assert.NotEmpty(t, rotateData["kid"])
+	assert.NotEmpty(t, rotateData["grace_period"])
+
+	// Pre-rotation token should STILL work (grace period).
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", preRotationToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Login again → get a token signed with the NEW key.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	postRotationToken := readJSON(t, resp)["access_token"].(string)
+
+	// New token works.
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", postRotationToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Both tokens should be different (signed with different keys).
+	assert.NotEqual(t, preRotationToken, postRotationToken)
+}
+
+// ── Builtin Token Survives Restart ──────────────────────────────────
+
+// TestE2E_Builtin_TokenSurvivesRestart verifies that tokens remain valid
+// after server restart because the signing key is persisted in PostgreSQL.
+func TestE2E_Builtin_TokenSurvivesRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	// Start server and login.
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+
+	resp := apiPost(t, srv.baseURL, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	token := readJSON(t, resp)["access_token"].(string)
+
+	// Token works before restart.
+	resp = bearerRequest(t, "GET", srv.baseURL+"/api/v1/users", token, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Stop and restart the server (same PG, different port).
+	srv.stop()
+	time.Sleep(500 * time.Millisecond)
+
+	srv2 := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv2.stop()
+
+	// Token from the first instance should still work on the new instance.
+	resp = bearerRequest(t, "GET", srv2.baseURL+"/api/v1/users", token, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+}
+
+// ── Builtin Change Password ─────────────────────────────────────────
+
+// TestE2E_Builtin_ChangePassword verifies the password change flow.
+func TestE2E_Builtin_ChangePassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv.stop()
+
+	base := srv.baseURL
+
+	// Login with original password.
+	resp := apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	token := readJSON(t, resp)["access_token"].(string)
+
+	// Change password.
+	resp = bearerRequest(t, "POST", base+"/api/auth/change-password", token, map[string]string{
+		"old_password": "admin123", "new_password": "newpass456",
+	})
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Login with old password → 401.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
+
+	// Login with new password → 200.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "newpass456",
+	})
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	data := readJSON(t, resp)
+	assert.NotEmpty(t, data["access_token"])
+}
+
+// ── Builtin + HMAC Coexistence ──────────────────────────────────────
+
+// TestE2E_Builtin_HMACCoexistence verifies that builtin JWT auth and HMAC
+// credentials work simultaneously (builtin mode doesn't break HMAC auth).
+func TestE2E_Builtin_HMACCoexistence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:            pgDSN,
+		builtinAuth:      true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv.stop()
+
+	base := srv.baseURL
+
+	// Create HMAC credential (bootstrap mode).
+	resp := apiPost(t, base, "/api/v1/credentials", map[string]any{
+		"description": "hmac-cred",
+		"scopes":      []string{"config:read", "config:write"},
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	hmacCred := readJSON(t, resp)
+	hmacAK := hmacCred["access_key"].(string)
+	hmacSK := hmacCred["secret_key"].(string)
+
+	// HMAC auth works.
+	resp = hmacRequest(t, "GET", base+"/api/v1/domains", hmacAK, hmacSK, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Builtin JWT auth works alongside.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	token := readJSON(t, resp)["access_token"].(string)
+
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", token, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Create domain via HMAC, read via builtin JWT.
+	resp = hmacRequest(t, "POST", base+"/api/v1/domains", hmacAK, hmacSK, domainConfig{
+		Name: "builtin-hmac-domain", Hosts: []string{"bh.example.com"},
+		Routes: []routeConfig{{Name: "r1", URI: "/*", Clusters: []weightedCluster{{Name: "c", Weight: 100}}, Status: 1}},
+	})
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	resp = bearerRequest(t, "GET", base+"/api/v1/domains/builtin-hmac-domain", token, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	data := readJSON(t, resp)
+	assert.Equal(t, "builtin-hmac-domain", data["name"])
+}
+
+// ── Builtin User CRUD (Admin) ────────────────────────────────────────
+
+// TestE2E_Builtin_UserCRUD verifies admin user management in builtin mode:
+// create users, update user info, reset password, delete users, and edge cases.
+func TestE2E_Builtin_UserCRUD(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
+		builtinAdminEmail: "admin@hermes.local",
+		builtinAdminPass:  "admin123",
+	})
+	defer srv.stop()
+
+	base := srv.baseURL
+
+	// Login as admin to get a Bearer token.
+	resp := apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "admin@hermes.local", "password": "admin123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	adminToken := readJSON(t, resp)["access_token"].(string)
+
+	// ── Create a new builtin user ──
+	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
+		"email": "alice@hermes.local", "password": "alice123", "name": "Alice", "is_admin": false,
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	created := readJSON(t, resp)
+	aliceSub := created["sub"].(string)
+	assert.Equal(t, "builtin:alice@hermes.local", aliceSub)
+
+	// New user can login.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "alice@hermes.local", "password": "alice123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	aliceToken := readJSON(t, resp)["access_token"].(string)
+	assert.NotEmpty(t, aliceToken)
+
+	// New user (non-admin) cannot list users.
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", aliceToken, nil)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Duplicate create → 409 ──
+	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
+		"email": "alice@hermes.local", "password": "alice123",
+	})
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Update user info ──
+	resp = bearerRequest(t, "PUT", base+"/api/v1/users/"+aliceSub, adminToken, map[string]any{
+		"name": "Alice Updated", "is_admin": true,
+	})
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Verify admin flag: Alice can now list users.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "alice@hermes.local", "password": "alice123",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	aliceToken2 := readJSON(t, resp)["access_token"].(string)
+
+	resp = bearerRequest(t, "GET", base+"/api/v1/users", aliceToken2, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Reset user password ──
+	resp = bearerRequest(t, "PUT", base+"/api/v1/users/"+aliceSub+"/reset-password", adminToken, map[string]any{
+		"new_password": "newpass789",
+	})
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Old password → 401.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "alice@hermes.local", "password": "alice123",
+	})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
+
+	// New password → 200.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "alice@hermes.local", "password": "newpass789",
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Reset password for non-builtin user → 400 ──
+	resp = bearerRequest(t, "PUT", base+"/api/v1/users/oidc:someone/reset-password", adminToken, map[string]any{
+		"new_password": "whatever",
+	})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Reset password for non-existent user → 404 ──
+	resp = bearerRequest(t, "PUT", base+"/api/v1/users/builtin:nobody@hermes.local/reset-password", adminToken, map[string]any{
+		"new_password": "whatever",
+	})
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Delete self → 400 ──
+	adminSub := "builtin:admin@hermes.local"
+	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+adminSub, adminToken, nil)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Delete user ──
+	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+aliceSub, adminToken, nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	// Deleted user cannot login.
+	resp = apiPost(t, base, "/api/auth/login", map[string]string{
+		"email": "alice@hermes.local", "password": "newpass789",
+	})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Delete non-existent user → 404 ──
+	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+aliceSub, adminToken, nil)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Validation: missing email → 400 ──
+	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
+		"email": "", "password": "test123",
+	})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+
+	// ── Validation: short password → 400 ──
+	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
+		"email": "short@hermes.local", "password": "12345",
+	})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+}
+
 // futureExpiry returns a time 1 hour in the future, used for JWT expiry.
 func futureExpiry() time.Time {
 	return time.Now().Add(1 * time.Hour)

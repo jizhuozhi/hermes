@@ -7,10 +7,13 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Postgres PostgresConfig `yaml:"postgres"`
-	Grafana  GrafanaConfig  `yaml:"grafana"`
-	OIDC     OIDCConfig     `yaml:"oidc"`
+	Server      ServerConfig      `yaml:"server"`
+	Postgres    PostgresConfig    `yaml:"postgres"`
+	OIDC        OIDCConfig        `yaml:"oidc"`
+	BuiltinAuth BuiltinAuthConfig `yaml:"builtin_auth"`
+	// AuthMode selects the authentication backend: "builtin", "oidc", or "" (disabled).
+	// Can be overridden by HERMES_AUTH_MODE env var.
+	AuthMode string `yaml:"auth_mode"`
 }
 
 type ServerConfig struct {
@@ -19,15 +22,6 @@ type ServerConfig struct {
 
 type PostgresConfig struct {
 	DSN string `yaml:"dsn"`
-}
-
-type GrafanaConfig struct {
-	Dashboards []GrafanaDashboard `yaml:"dashboards"`
-}
-
-type GrafanaDashboard struct {
-	Name string `yaml:"name"`
-	URL  string `yaml:"url"`
 }
 
 // OIDCConfig holds OpenID Connect configuration.
@@ -40,8 +34,18 @@ type OIDCConfig struct {
 	// InitialAdminUsers is a comma-separated list of OIDC usernames or emails.
 	// When these users log in for the FIRST TIME, they are automatically granted super-admin.
 	// Subsequent logins never change admin status — it's fully managed via the UI.
-	// Can also be set via HERMES_INITIAL_ADMIN_USERS env var.
+	// Can also be set via OIDC_INITIAL_ADMIN_USERS env var.
 	InitialAdminUsers string `yaml:"initial_admin_users"`
+}
+
+// BuiltinAuthConfig holds configuration for the built-in username/password
+// authentication system. Uses bcrypt for password hashing and self-signed
+// HMAC-SHA256 JWTs. Signing keys are auto-generated and persisted in PostgreSQL.
+type BuiltinAuthConfig struct {
+	// InitialAdminEmail is the email for the auto-created initial admin user.
+	InitialAdminEmail string `yaml:"initial_admin_email"`
+	// InitialAdminPassword is the password for the initial admin user.
+	InitialAdminPassword string `yaml:"initial_admin_password"`
 }
 
 // Load reads configuration from a YAML file (if it exists) and applies
@@ -87,8 +91,25 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("OIDC_CLIENT_SECRET"); v != "" {
 		cfg.OIDC.ClientSecret = v
 	}
-	if v := os.Getenv("HERMES_INITIAL_ADMIN_USERS"); v != "" {
+	if v := os.Getenv("OIDC_INITIAL_ADMIN_USERS"); v != "" {
 		cfg.OIDC.InitialAdminUsers = v
+	}
+
+	// Auth mode override.
+	if v := os.Getenv("HERMES_AUTH_MODE"); v != "" {
+		cfg.AuthMode = v
+	}
+	// Backward compatibility: if OIDC_ENABLED is set and no auth_mode, use "oidc".
+	if cfg.OIDC.Enabled && cfg.AuthMode == "" {
+		cfg.AuthMode = "oidc"
+	}
+
+	// Builtin auth overrides.
+	if v := os.Getenv("HERMES_INITIAL_ADMIN_EMAIL"); v != "" {
+		cfg.BuiltinAuth.InitialAdminEmail = v
+	}
+	if v := os.Getenv("HERMES_INITIAL_ADMIN_PASSWORD"); v != "" {
+		cfg.BuiltinAuth.InitialAdminPassword = v
 	}
 
 	return cfg, nil

@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 go build -o /hermes-server ./cmd/server
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates wget
 COPY --from=backend /hermes-server /usr/local/bin/hermes-server
+COPY --from=frontend /app/web/dist /usr/local/bin/web/dist
 COPY config.yaml.example /etc/hermes/config.yaml
+WORKDIR /usr/local/bin
 EXPOSE 9080
 ENTRYPOINT ["hermes-server", "-config", "/etc/hermes/config.yaml"]

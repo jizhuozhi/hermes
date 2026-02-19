@@ -134,7 +134,25 @@
     <!-- Admin section: All Users -->
     <div v-if="isAdmin" class="admin-section">
       <h2>All Users (Admin)</h2>
-      <p class="page-desc">Users are automatically synced on OIDC login. Toggle the Admin checkbox to promote a user to super admin.</p>
+      <p class="page-desc">Manage all users across the system. Toggle the Admin checkbox to promote a user to super admin.</p>
+
+      <!-- Create builtin user (only in builtin auth mode) -->
+      <div v-if="isBuiltinAuth" class="add-member-section">
+        <h3>Create User</h3>
+        <div class="create-user-form">
+          <input v-model="newUser.email" class="form-input" placeholder="Email" />
+          <input v-model="newUser.name" class="form-input" placeholder="Name (optional)" />
+          <input v-model="newUser.password" type="password" class="form-input" placeholder="Password (min 6)" />
+          <label class="admin-toggle compact">
+            <input type="checkbox" v-model="newUser.isAdmin">
+            <span>Admin</span>
+          </label>
+          <button class="btn btn-primary" @click="createUser" :disabled="!newUser.email || !newUser.password">Create</button>
+        </div>
+        <div v-if="createUserError" class="error-msg">{{ createUserError }}</div>
+        <div v-if="createUserSuccess" class="success-msg">{{ createUserSuccess }}</div>
+      </div>
+
       <table v-if="allUsers.length" class="data-table">
         <thead>
           <tr>
@@ -143,13 +161,19 @@
             <th>Name</th>
             <th>Admin</th>
             <th>Last Seen</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="u in allUsers" :key="u.sub">
             <td>{{ u.username }}</td>
             <td class="dim">{{ u.email }}</td>
-            <td>{{ u.name }}</td>
+            <td>
+              <template v-if="editingUser === u.sub">
+                <input v-model="editForm.name" class="inline-input" placeholder="Name" @keyup.enter="saveEdit(u)" />
+              </template>
+              <template v-else>{{ u.name }}</template>
+            </td>
             <td>
               <label class="admin-toggle">
                 <input type="checkbox" :checked="u.is_admin" @change="toggleAdmin(u)" :disabled="u.sub === mySub">
@@ -157,15 +181,54 @@
               </label>
             </td>
             <td class="dim">{{ formatTime(u.last_seen) }}</td>
+            <td class="actions-cell">
+              <template v-if="u.sub !== mySub">
+                <!-- Edit name -->
+                <template v-if="editingUser === u.sub">
+                  <button class="btn-action save" @click="saveEdit(u)" title="Save">&#10003;</button>
+                  <button class="btn-action cancel" @click="cancelEdit" title="Cancel">&#10005;</button>
+                </template>
+                <button v-else class="btn-action" @click="startEdit(u)" title="Edit name">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.1a.25.25 0 00-.064.108l-.563 1.97 1.971-.564a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.354l-1.086-1.086z"/></svg>
+                </button>
+                <!-- Reset password (builtin users only) -->
+                <button v-if="isBuiltinSub(u.sub)" class="btn-action" @click="promptResetPassword(u)" title="Reset password">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 1a3.5 3.5 0 00-3.5 3.5V7H3.75A1.75 1.75 0 002 8.75v5.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 14.25v-5.5A1.75 1.75 0 0012.25 7H11V4.5A3.5 3.5 0 008 1zm2 6V4.5a2 2 0 10-4 0V7h4z"/></svg>
+                </button>
+                <!-- Force password change (builtin users only) -->
+                <button v-if="isBuiltinSub(u.sub)" class="btn-action" @click="forcePasswordChange(u)" :title="u.must_change_password ? 'Clear force-change flag' : 'Force password change on next login'">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" :style="{ opacity: u.must_change_password ? 1 : 0.5 }"><path d="M5.029 2.217a6.5 6.5 0 019.437 5.11.75.75 0 101.492-.154 8 8 0 00-14.09-4.171L1.5 1.5v3.25a.75.75 0 00.75.75H5.5l-1.471-1.283zM1.195 8.673a6.5 6.5 0 009.466 4.465l.578 1.345a8 8 0 01-11.536-5.656.75.75 0 011.492-.154z"/></svg>
+                </button>
+                <!-- Delete -->
+                <button class="btn-action danger" @click="deleteUser(u)" title="Delete user">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zM11 3V1.75A1.75 1.75 0 009.25 0h-2.5A1.75 1.75 0 005 1.75V3H2.75a.75.75 0 000 1.5h.68l.806 7.243A1.75 1.75 0 005.98 13.5h4.04a1.75 1.75 0 001.744-1.757L12.57 4.5h.68a.75.75 0 000-1.5H11z"/></svg>
+                </button>
+              </template>
+            </td>
           </tr>
         </tbody>
       </table>
+      <div v-if="userActionError" class="error-msg" style="margin-top: 8px;">{{ userActionError }}</div>
+
+      <!-- Reset password modal -->
+      <div v-if="resetPasswordTarget" class="modal-overlay" @click.self="resetPasswordTarget = null">
+        <div class="modal-box">
+          <h3>Reset Password</h3>
+          <p class="modal-desc">Set a new password for <strong>{{ resetPasswordTarget.email || resetPasswordTarget.username }}</strong></p>
+          <input v-model="resetPasswordValue" type="password" class="form-input" placeholder="New password (min 6 chars)" @keyup.enter="confirmResetPassword" autofocus />
+          <div class="modal-actions">
+            <button class="btn btn-secondary" @click="resetPasswordTarget = null">Cancel</button>
+            <button class="btn btn-primary" @click="confirmResetPassword" :disabled="!resetPasswordValue || resetPasswordValue.length < 6">Reset</button>
+          </div>
+          <div v-if="resetPasswordError" class="error-msg">{{ resetPasswordError }}</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import api from '../api.js'
+import api, { getAuthConfig } from '../api.js'
 
 export default {
   data() {
@@ -175,12 +238,26 @@ export default {
       groupBindings: [],
       whoami: null,
       loading: true,
+      authMode: null,
       newMemberSub: '',
       newMemberRole: 'viewer',
       addError: '',
       newGroupName: '',
       newGroupRole: 'viewer',
       groupError: '',
+      // Create user
+      newUser: { email: '', name: '', password: '', isAdmin: false },
+      createUserError: '',
+      createUserSuccess: '',
+      // Edit user
+      editingUser: null,
+      editForm: { name: '' },
+      // Reset password
+      resetPasswordTarget: null,
+      resetPasswordValue: '',
+      resetPasswordError: '',
+      // General user action error
+      userActionError: '',
     }
   },
   computed: {
@@ -203,21 +280,30 @@ export default {
     canManage() {
       return this.isAdmin || this.myRole === 'owner'
     },
+    isBuiltinAuth() {
+      return this.authMode === 'builtin'
+    },
     availableUsers() {
       const memberSubs = new Set(this.members.map(m => m.user_sub))
       return this.allUsers.filter(u => !memberSubs.has(u.sub))
     },
     knownGroups() {
-      // Current user's groups from JWT claims (via whoami).
       const myGroups = this.whoami?.groups || []
       const boundGroups = new Set(this.groupBindings.map(b => b.group))
       return myGroups.filter(g => !boundGroups.has(g)).sort()
     }
   },
   async created() {
+    try {
+      const cfg = await getAuthConfig()
+      this.authMode = cfg.mode || null
+    } catch {}
     await this.loadData()
   },
   methods: {
+    isBuiltinSub(sub) {
+      return sub && sub.startsWith('builtin:')
+    },
     async loadData() {
       this.loading = true
       try {
@@ -230,7 +316,6 @@ export default {
         this.whoami = whoamiRes.data
         this.groupBindings = bindingsRes.data.bindings || []
 
-        // Load all users if admin or owner (needed for the add member dropdown).
         if (this.isAdmin || this.myRole === 'owner') {
           const usersRes = await api.listUsers()
           this.allUsers = usersRes.data.users || []
@@ -302,6 +387,82 @@ export default {
         u.is_admin = !u.is_admin
       } catch (e) {
         // revert
+      }
+    },
+    // ── Create builtin user ──
+    async createUser() {
+      this.createUserError = ''
+      this.createUserSuccess = ''
+      try {
+        await api.createBuiltinUser(this.newUser.email, this.newUser.password, this.newUser.name, this.newUser.isAdmin)
+        this.createUserSuccess = `User ${this.newUser.email} created successfully.`
+        this.newUser = { email: '', name: '', password: '', isAdmin: false }
+        await this.loadData()
+        setTimeout(() => { this.createUserSuccess = '' }, 3000)
+      } catch (e) {
+        this.createUserError = e.response?.data?.error || 'Failed to create user'
+      }
+    },
+    // ── Edit user ──
+    startEdit(u) {
+      this.editingUser = u.sub
+      this.editForm.name = u.name || ''
+      this.userActionError = ''
+    },
+    cancelEdit() {
+      this.editingUser = null
+      this.editForm.name = ''
+    },
+    async saveEdit(u) {
+      this.userActionError = ''
+      try {
+        await api.updateUser(u.sub, { name: this.editForm.name })
+        this.editingUser = null
+        await this.loadData()
+      } catch (e) {
+        this.userActionError = e.response?.data?.error || 'Failed to update user'
+      }
+    },
+    // ── Reset password ──
+    promptResetPassword(u) {
+      this.resetPasswordTarget = u
+      this.resetPasswordValue = ''
+      this.resetPasswordError = ''
+    },
+    async confirmResetPassword() {
+      this.resetPasswordError = ''
+      if (!this.resetPasswordValue || this.resetPasswordValue.length < 6) {
+        this.resetPasswordError = 'Password must be at least 6 characters'
+        return
+      }
+      try {
+        await api.resetUserPassword(this.resetPasswordTarget.sub, this.resetPasswordValue)
+        this.resetPasswordTarget = null
+        this.resetPasswordValue = ''
+      } catch (e) {
+        this.resetPasswordError = e.response?.data?.error || 'Failed to reset password'
+      }
+    },
+    // ── Force password change ──
+    async forcePasswordChange(u) {
+      this.userActionError = ''
+      const newVal = !u.must_change_password
+      try {
+        await api.forcePasswordChange(u.sub, newVal)
+        u.must_change_password = newVal
+      } catch (e) {
+        this.userActionError = e.response?.data?.error || 'Failed to update force-change flag'
+      }
+    },
+    // ── Delete user ──
+    async deleteUser(u) {
+      if (!confirm(`Delete user "${u.email || u.username}"? This cannot be undone.`)) return
+      this.userActionError = ''
+      try {
+        await api.deleteUser(u.sub)
+        await this.loadData()
+      } catch (e) {
+        this.userActionError = e.response?.data?.error || 'Failed to delete user'
       }
     },
     formatTime(t) {
@@ -506,4 +667,90 @@ export default {
   color: #e1e4e8;
 }
 .admin-toggle input { cursor: pointer; }
+.admin-toggle.compact { font-size: 12px; white-space: nowrap; }
+
+.create-user-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.create-user-form .form-input { flex: 1; min-width: 120px; }
+
+.success-msg { margin-top: 8px; color: #3fb950; font-size: 13px; }
+
+.actions-cell {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-action:hover { color: #e1e4e8; border-color: #58a6ff; background: #1f6feb22; }
+.btn-action.danger:hover { color: #f85149; border-color: #f85149; background: #f8514922; }
+.btn-action.save { color: #3fb950; border-color: #3fb95044; font-weight: bold; font-size: 14px; }
+.btn-action.save:hover { border-color: #3fb950; background: #23863622; }
+.btn-action.cancel { color: #f85149; border-color: #f8514944; font-weight: bold; font-size: 14px; }
+.btn-action.cancel:hover { border-color: #f85149; background: #f8514922; }
+
+.inline-input {
+  padding: 4px 8px;
+  background: #0d1117;
+  border: 1px solid #58a6ff;
+  border-radius: 4px;
+  color: #e1e4e8;
+  font-size: 13px;
+  width: 100%;
+  max-width: 180px;
+}
+.inline-input:focus { outline: none; box-shadow: 0 0 0 2px #1f6feb44; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-box {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 24px;
+  min-width: 360px;
+  max-width: 480px;
+}
+.modal-box h3 { color: #e1e4e8; font-size: 18px; margin-bottom: 8px; }
+.modal-desc { color: #8b949e; font-size: 13px; margin-bottom: 16px; }
+.modal-box .form-input { width: 100%; margin-bottom: 12px; box-sizing: border-box; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.btn-secondary {
+  padding: 8px 16px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: transparent;
+  color: #e1e4e8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-secondary:hover { border-color: #8b949e; }
 </style>

@@ -156,6 +156,10 @@ type serverOpts struct {
 	oidcClientID      string
 	oidcClientSecret  string
 	initialAdminUsers string
+	// Builtin auth mode
+	builtinAuth       bool
+	builtinAdminEmail string
+	builtinAdminPass  string
 }
 
 type serverProc struct {
@@ -187,6 +191,15 @@ oidc:
   client_secret: %q
   initial_admin_users: %q
 `, opts.oidcIssuer, opts.oidcClientID, opts.oidcClientSecret, opts.initialAdminUsers)
+	}
+
+	if opts.builtinAuth {
+		cfgYAML += fmt.Sprintf(`
+auth_mode: "builtin"
+builtin_auth:
+  initial_admin_email: %q
+  initial_admin_password: %q
+`, opts.builtinAdminEmail, opts.builtinAdminPass)
 	}
 
 	tmpDir := t.TempDir()
