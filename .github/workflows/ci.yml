@@ -41,7 +41,14 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: server/coverage.out
+          flags: server
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   controller:
     name: Controller (Go)
@@ -64,7 +71,14 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: controller/coverage.out
+          flags: controller
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   gateway:
     name: Gateway (Rust)
@@ -77,11 +91,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy, rustfmt, llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: gateway
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Format check
         run: cargo fmt --check
@@ -92,8 +109,15 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Test
-        run: cargo test
+      - name: Test with coverage
+        run: cargo llvm-cov --lcov --output-path lcov.info
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: gateway/lcov.info
+          flags: gateway
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   e2e:
     name: E2E Tests

@@ -1,5 +1,11 @@
 # Hermes
 
+[![CI](https://github.com/jizhuozhi/hermes/actions/workflows/ci.yml/badge.svg)](https://github.com/jizhuozhi/hermes/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/jizhuozhi/hermes/graph/badge.svg)](https://codecov.io/gh/jizhuozhi/hermes)
+[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Rust](https://img.shields.io/badge/Rust-2021_Edition-F74C00?logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![License](https://img.shields.io/github/license/jizhuozhi/hermes)](LICENSE)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
