@@ -2,6 +2,16 @@
   <div>
     <div class="page-header">
       <h1>{{ isEdit ? `Edit Cluster: ${clusterName}` : 'New Cluster' }}</h1>
+      <div class="mode-tabs">
+        <button type="button" class="mode-tab" :class="{ active: mode === 'form' }" @click="switchMode('form')">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          Form
+        </button>
+        <button type="button" class="mode-tab" :class="{ active: mode === 'json' }" @click="switchMode('json')">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          JSON
+        </button>
+      </div>
     </div>
 
     <div v-if="error" class="alert alert-error">{{ error }}</div>
@@ -9,7 +19,40 @@
       <div v-for="e in validationErrors" :key="e.field">{{ e.field }}: {{ e.message }}</div>
     </div>
 
-    <form @submit.prevent="save" class="form">
+    <!-- JSON Mode -->
+    <div v-if="mode === 'json'" class="json-mode">
+      <div class="json-toolbar">
+        <button type="button" class="btn btn-small" @click="formatJson">Format</button>
+        <button type="button" class="btn btn-small" @click="copyJson">Copy</button>
+        <span v-if="jsonMsg" :class="['json-msg', jsonMsg.type]">{{ jsonMsg.text }}</span>
+      </div>
+      <div class="json-editor-wrap">
+        <div class="json-gutter" ref="jsonGutter">
+          <div v-for="n in jsonLineCount" :key="n" class="json-line-num">{{ n }}</div>
+        </div>
+        <textarea
+          ref="jsonEditor"
+          v-model="jsonText"
+          class="json-textarea"
+          spellcheck="false"
+          @scroll="syncJsonScroll"
+          @keydown="onJsonKeydown"
+        ></textarea>
+      </div>
+      <div class="json-status">
+        <span class="json-hint">Edit the cluster JSON directly. Click Save to apply.</span>
+        <span class="json-lines">{{ jsonLineCount }} lines</span>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" @click="$router.push('/clusters')">Cancel</button>
+        <button type="button" class="btn btn-primary" @click="saveJson" :disabled="saving">
+          {{ saving ? 'Saving...' : (isEdit ? 'Update' : 'Create') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Form Mode -->
+    <form v-if="mode === 'form'" @submit.prevent="save" class="form">
       <div class="form-section">
         <h2>Basic</h2>
         <div class="form-grid">
@@ -295,6 +338,7 @@ const defaultCluster = () => ({
 export default {
   data() {
     return {
+      mode: 'form',
       cluster: defaultCluster(),
       isEdit: false,
       clusterName: '',
@@ -303,20 +347,25 @@ export default {
       saving: false,
       discoveryType: '',
       serviceName: '',
-      metadataRules: [],  // [{key: 'namespace', values: ['prod', 'canary']}]
-      // Health Check
+      metadataRules: [],
       enableHealthCheck: false,
       enableActiveHC: false,
       activeHC: { interval: 10, path: '/health', timeout: 3, healthy_threshold: 3, unhealthy_threshold: 3, concurrency: 64, healthy_statuses: [200] },
       activeHCPort: null,
       activeHCHealthyStatuses: '200',
-      // Retry
       enableRetry: false,
       retryConfig: { count: 2, retry_on_statuses: [502, 503, 504], retry_on_connect_failure: true, retry_on_timeout: true },
       retryOnStatuses: '502,503,504',
-      // Circuit Breaker
       enableCircuitBreaker: false,
       circuitBreakerConfig: { failure_threshold: 5, success_threshold: 2, open_duration_secs: 30 },
+      // JSON mode
+      jsonText: '',
+      jsonMsg: null,
+    }
+  },
+  computed: {
+    jsonLineCount() {
+      return this.jsonText ? this.jsonText.split('\n').length : 1
     }
   },
   watch: {
@@ -375,8 +424,126 @@ export default {
         this.error = e.response?.data?.error || e.message
       }
     }
+    if (this.$route.query.mode === 'json') {
+      this.switchMode('json')
+    }
   },
   methods: {
+    // --- Mode switching ---
+    switchMode(target) {
+      if (target === this.mode) return
+      if (target === 'json') {
+        const payload = JSON.parse(JSON.stringify(this.cluster))
+        this.jsonText = JSON.stringify(payload, null, 2)
+        this.jsonMsg = null
+      } else {
+        try {
+          const parsed = JSON.parse(this.jsonText)
+          this.cluster = parsed
+          this.hydrateCluster()
+          this.jsonMsg = null
+        } catch (e) {
+          this.error = 'Invalid JSON — fix it before switching to Form mode: ' + e.message
+          return
+        }
+      }
+      this.mode = target
+    },
+
+    hydrateCluster() {
+      this.discoveryType = this.cluster.discovery_type || ''
+      this.serviceName = this.cluster.service_name || ''
+      const mm = this.cluster.discovery_args?.metadata_match
+      this.metadataRules = mm ? Object.entries(mm).map(([key, values]) => ({ key, values: [...values] })) : []
+      if (this.cluster.health_check) {
+        this.enableHealthCheck = true
+        if (this.cluster.health_check.active) {
+          this.enableActiveHC = true
+          this.activeHC = { ...this.activeHC, ...this.cluster.health_check.active }
+          this.activeHCHealthyStatuses = (this.activeHC.healthy_statuses || []).join(',')
+          this.activeHCPort = this.cluster.health_check.active.port || null
+        }
+      }
+      if (this.cluster.retry) {
+        this.enableRetry = true
+        this.retryConfig = { ...this.retryConfig, ...this.cluster.retry }
+        this.retryOnStatuses = (this.retryConfig.retry_on_statuses || []).join(',')
+      }
+      if (this.cluster.circuit_breaker) {
+        this.enableCircuitBreaker = true
+        this.circuitBreakerConfig = { ...this.circuitBreakerConfig, ...this.cluster.circuit_breaker }
+      }
+    },
+
+    // --- JSON mode helpers ---
+    formatJson() {
+      try {
+        const obj = JSON.parse(this.jsonText)
+        this.jsonText = JSON.stringify(obj, null, 2)
+        this.jsonMsg = { type: 'success', text: 'Formatted.' }
+      } catch (e) {
+        this.jsonMsg = { type: 'error', text: 'Invalid JSON: ' + e.message }
+      }
+    },
+    async copyJson() {
+      try {
+        await navigator.clipboard.writeText(this.jsonText)
+        this.jsonMsg = { type: 'success', text: 'Copied.' }
+      } catch {
+        this.jsonMsg = { type: 'error', text: 'Copy failed.' }
+      }
+    },
+    syncJsonScroll() {
+      if (this.$refs.jsonGutter && this.$refs.jsonEditor) {
+        this.$refs.jsonGutter.scrollTop = this.$refs.jsonEditor.scrollTop
+      }
+    },
+    onJsonKeydown(e) {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const ta = e.target
+        const start = ta.selectionStart
+        const end = ta.selectionEnd
+        this.jsonText = this.jsonText.substring(0, start) + '  ' + this.jsonText.substring(end)
+        this.$nextTick(() => { ta.selectionStart = ta.selectionEnd = start + 2 })
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        this.saveJson()
+      }
+    },
+    async saveJson() {
+      this.saving = true
+      this.error = null
+      this.validationErrors = []
+      let parsed
+      try {
+        parsed = JSON.parse(this.jsonText)
+      } catch (e) {
+        this.error = 'Invalid JSON: ' + e.message
+        this.saving = false
+        return
+      }
+      try {
+        if (this.isEdit) {
+          await api.updateCluster(this.clusterName, parsed)
+        } else {
+          await api.createCluster(parsed)
+        }
+        this.$router.push('/clusters')
+      } catch (e) {
+        const data = e.response?.data
+        if (data?.errors) {
+          this.validationErrors = data.errors
+        } else {
+          this.error = data?.error || e.message
+        }
+      } finally {
+        this.saving = false
+      }
+    },
+
+    // --- Original form methods ---
     syncMetadata() {
       const match = {}
       for (const rule of this.metadataRules) {
@@ -479,8 +646,14 @@ export default {
 </script>
 
 <style scoped>
-.page-header { margin-bottom: 24px; }
-h1 { font-size: 24px; font-weight: 600; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.mode-tabs { display: flex; gap: 0; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+.mode-tab { display: flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; background: #21262d; color: #8b949e; border: none; cursor: pointer; transition: all 0.15s; }
+.mode-tab:first-child { border-right: 1px solid #30363d; }
+.mode-tab.active { background: #1f6feb33; color: #58a6ff; }
+.mode-tab:hover:not(.active) { background: #30363d; color: #e1e4e8; }
+
+.page-header h1 { font-size: 24px; font-weight: 600; }
 h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #e1e4e8; display: flex; align-items: center; gap: 12px; }
 h3 { font-size: 14px; font-weight: 500; color: #8b949e; margin: 16px 0 8px; }
 .form-section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
@@ -524,4 +697,19 @@ h3 { font-size: 14px; font-weight: 500; color: #8b949e; margin: 16px 0 8px; }
 .sub-section h3 { display: flex; align-items: center; margin: 0 0 12px 0; }
 .field-wide { grid-column: 1 / -1; }
 .field-wide .hint { font-size: 11px; color: #6e7681; margin-top: 4px; }
+
+/* JSON editor */
+.json-mode { margin-top: 0; }
+.json-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.json-msg { font-size: 12px; margin-left: 8px; }
+.json-msg.success { color: #3fb950; }
+.json-msg.error { color: #f85149; }
+.json-editor-wrap { position: relative; border: 1px solid #30363d; border-radius: 8px 8px 0 0; overflow: hidden; background: #0d1117; height: clamp(400px, 60vh, calc(100vh - 300px)); }
+.json-gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 48px; background: #161b22; border-right: 1px solid #21262d; padding: 12px 0; overflow: hidden; user-select: none; z-index: 1; pointer-events: none; }
+.json-line-num { height: 20px; line-height: 20px; font-size: 12px; font-family: 'SF Mono', Consolas, monospace; color: #484f58; text-align: right; padding-right: 10px; }
+.json-textarea { display: block; width: 100%; height: 100%; padding: 12px 16px 12px 64px; background: transparent; color: #e1e4e8; border: none; outline: none; resize: none; font-size: 13px; font-family: 'SF Mono', Consolas, monospace; line-height: 20px; tab-size: 2; white-space: pre; overflow: auto; box-sizing: border-box; }
+.json-textarea::selection { background: #1f6feb44; }
+.json-status { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 12px; color: #8b949e; border: 1px solid #30363d; border-top: none; border-radius: 0 0 8px 8px; background: #161b22; }
+.json-hint { color: #6e7681; }
+.json-lines { color: #484f58; }
 </style>
