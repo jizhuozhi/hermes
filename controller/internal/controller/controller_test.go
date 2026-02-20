@@ -24,9 +24,6 @@ import (
 // startEtcd starts an etcd container and returns the client endpoint.
 func startEtcd(t *testing.T, ctx context.Context) (string, func()) {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
 	req := testcontainers.ContainerRequest{
 		Image:        "quay.io/coreos/etcd:v3.5.17",
 		ExposedPorts: []string{"2379/tcp"},
@@ -558,4 +555,177 @@ func TestFetchChanges(t *testing.T) {
 	events2, _, err := ctrl.fetchChanges(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, events2)
+}
+
+func TestIsLeaderFlag(t *testing.T) {
+	ctx := context.Background()
+	etcdEndpoint, cleanup := startEtcd(t, ctx)
+	defer cleanup()
+
+	cp := newMockControlplane()
+	srv := httptest.NewServer(cp.handler())
+	defer srv.Close()
+
+	ctrl := newTestController(t, srv.URL, etcdEndpoint)
+	defer ctrl.Close()
+
+	assert.False(t, ctrl.IsLeader())
+	ctrl.SetLeader(true)
+	assert.True(t, ctrl.IsLeader())
+	ctrl.SetLeader(false)
+	assert.False(t, ctrl.IsLeader())
+}
+
+func TestHeartbeatReportsLeaderStatus(t *testing.T) {
+	ctx := context.Background()
+	etcdEndpoint, cleanup := startEtcd(t, ctx)
+	defer cleanup()
+
+	var mu sync.Mutex
+	var lastReport controllerReport
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /api/v1/status/controller", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &lastReport)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	ctrl := newTestController(t, srv.URL, etcdEndpoint)
+	defer ctrl.Close()
+
+	ctrl.SetLeader(true)
+	err := ctrl.reportControllerStatus(ctx, "running")
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.True(t, lastReport.IsLeader)
+	assert.Equal(t, "running", lastReport.Status)
+	mu.Unlock()
+
+	ctrl.SetLeader(false)
+	err = ctrl.reportControllerStatus(ctx, "running")
+	require.NoError(t, err)
+
+	mu.Lock()
+	assert.False(t, lastReport.IsLeader)
+	mu.Unlock()
+}
+
+func TestRunWithElection_SingleInstance(t *testing.T) {
+	ctx := context.Background()
+	etcdEndpoint, cleanup := startEtcd(t, ctx)
+	defer cleanup()
+
+	cp := newMockControlplane()
+	domainData := json.RawMessage(`{"name":"election-domain","hosts":["elect.example.com"]}`)
+	cp.addDomain("election-domain", domainData)
+
+	srv := httptest.NewServer(cp.handler())
+	defer srv.Close()
+
+	ctrl := newTestController(t, srv.URL, etcdEndpoint)
+	ctrl.cfg.Election.Enabled = true
+	ctrl.cfg.Election.Prefix = "/hermes/test-election"
+	ctrl.cfg.Election.LeaseTTL = 5
+	defer ctrl.Close()
+
+	runCtx, cancel := context.WithCancel(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ctrl.RunWithElection(runCtx)
+	}()
+
+	// Wait for leader to be elected and reconcile to complete
+	require.Eventually(t, func() bool {
+		return ctrl.IsLeader()
+	}, 10*time.Second, 100*time.Millisecond, "should become leader")
+
+	// Verify data landed in etcd
+	etcdClient, err := clientv3.New(clientv3.Config{Endpoints: []string{etcdEndpoint}, DialTimeout: 5 * time.Second})
+	require.NoError(t, err)
+	defer etcdClient.Close()
+
+	require.Eventually(t, func() bool {
+		resp, err := etcdClient.Get(ctx, "/hermes/domains/election-domain")
+		return err == nil && len(resp.Kvs) == 1
+	}, 10*time.Second, 200*time.Millisecond, "domain should be synced to etcd")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestRunWithElection_LeadershipHandover(t *testing.T) {
+	ctx := context.Background()
+	etcdEndpoint, cleanup := startEtcd(t, ctx)
+	defer cleanup()
+
+	cp := newMockControlplane()
+	srv := httptest.NewServer(cp.handler())
+	defer srv.Close()
+
+	ctrl1 := newTestController(t, srv.URL, etcdEndpoint)
+	ctrl1.cfg.Election.Enabled = true
+	ctrl1.cfg.Election.Prefix = "/hermes/handover-election"
+	ctrl1.cfg.Election.LeaseTTL = 5
+	ctrl1.hostname = "controller-1"
+
+	ctrl2 := newTestController(t, srv.URL, etcdEndpoint)
+	ctrl2.cfg.Election.Enabled = true
+	ctrl2.cfg.Election.Prefix = "/hermes/handover-election"
+	ctrl2.cfg.Election.LeaseTTL = 5
+	ctrl2.hostname = "controller-2"
+
+	ctx1, cancel1 := context.WithCancel(ctx)
+	ctx2, cancel2 := context.WithCancel(ctx)
+	defer cancel2()
+
+	done1 := make(chan error, 1)
+	go func() {
+		done1 <- ctrl1.RunWithElection(ctx1)
+	}()
+
+	done2 := make(chan error, 1)
+	go func() {
+		done2 <- ctrl2.RunWithElection(ctx2)
+	}()
+
+	// Wait for ctrl1 to become leader
+	require.Eventually(t, func() bool {
+		return ctrl1.IsLeader() || ctrl2.IsLeader()
+	}, 10*time.Second, 100*time.Millisecond, "one controller should become leader")
+
+	// Stop the leader
+	if ctrl1.IsLeader() {
+		cancel1()
+		<-done1
+		ctrl1.Close()
+
+		require.Eventually(t, func() bool {
+			return ctrl2.IsLeader()
+		}, 15*time.Second, 200*time.Millisecond, "ctrl2 should take over leadership")
+		cancel2()
+		<-done2
+		ctrl2.Close()
+	} else {
+		cancel2()
+		<-done2
+		ctrl2.Close()
+
+		require.Eventually(t, func() bool {
+			return ctrl1.IsLeader()
+		}, 15*time.Second, 200*time.Millisecond, "ctrl1 should take over leadership")
+		cancel1()
+		<-done1
+		ctrl1.Close()
+	}
 }

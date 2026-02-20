@@ -36,6 +36,7 @@
           <span class="dot" :class="statusDotClass(status.controller.status)"></span>
           <strong class="mono">{{ status.controller.id }}</strong>
           <span class="status-badge" :class="'badge-' + (status.controller.status || 'unknown')">{{ status.controller.status || 'unknown' }}</span>
+          <span class="leader-badge" :class="status.controller.is_leader ? 'badge-leader' : 'badge-follower'">{{ status.controller.is_leader ? 'Leader' : 'Follower' }}</span>
         </div>
         <div class="instance-details">
           <div class="detail-row">
@@ -202,6 +203,10 @@ h1 { font-size: 24px; font-weight: 600; }
 .badge-shutting_down { background: #f8514922; color: #f85149; }
 .badge-unknown { background: #484f5822; color: #484f58; }
 .badge-offline { background: #484f5822; color: #484f58; }
+
+.leader-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.badge-leader { background: #da8b4522; color: #da8b45; }
+.badge-follower { background: #8b949e22; color: #8b949e; }
 
 .revision-badge { display: inline-block; padding: 2px 10px; background: #1f6feb22; color: #58a6ff; border-radius: 10px; font-size: 12px; font-weight: 600; font-family: 'SF Mono', Monaco, monospace; }
 

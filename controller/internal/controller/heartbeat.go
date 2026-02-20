@@ -14,6 +14,7 @@ import (
 type controllerReport struct {
 	ID              string `json:"id"`
 	Status          string `json:"status"`
+	IsLeader        bool   `json:"is_leader"`
 	StartedAt       string `json:"started_at"`
 	LastHeartbeatAt string `json:"last_heartbeat_at"`
 	ConfigRevision  int64  `json:"config_revision"`
@@ -47,6 +48,7 @@ func (c *Controller) reportControllerStatus(ctx context.Context, status string) 
 	report := controllerReport{
 		ID:              c.hostname,
 		Status:          status,
+		IsLeader:        c.IsLeader(),
 		StartedAt:       c.startedAt.Format(time.RFC3339),
 		LastHeartbeatAt: time.Now().Format(time.RFC3339),
 		ConfigRevision:  c.GetRevision(),

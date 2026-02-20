@@ -46,7 +46,15 @@ func main() {
 		cancel()
 	}()
 
-	if err := ctrl.Run(ctx); err != nil {
-		sugar.Fatalf("controller error: %v", err)
+	if cfg.Election.Enabled {
+		sugar.Info("leader election enabled, entering campaign loop")
+		if err := ctrl.RunWithElection(ctx); err != nil {
+			sugar.Fatalf("controller error: %v", err)
+		}
+	} else {
+		ctrl.SetLeader(true)
+		if err := ctrl.Run(ctx); err != nil {
+			sugar.Fatalf("controller error: %v", err)
+		}
 	}
 }

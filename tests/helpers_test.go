@@ -499,6 +499,9 @@ type controllerOpts struct {
 	secretKey         string
 	pollInterval      int
 	reconcileInterval int
+	electionEnabled   bool
+	electionPrefix    string
+	electionLeaseTTL  int
 }
 
 func startControllerProc(t *testing.T, ctrlBin string, opts controllerOpts) *controllerProc {
@@ -557,6 +560,23 @@ auth:
   access_key: %q
   secret_key: %q
 `, opts.accessKey, opts.secretKey)
+	}
+
+	if opts.electionEnabled {
+		prefix := opts.electionPrefix
+		if prefix == "" {
+			prefix = "/hermes/election"
+		}
+		ttl := opts.electionLeaseTTL
+		if ttl == 0 {
+			ttl = 5
+		}
+		cfgYAML += fmt.Sprintf(`
+election:
+  enabled: true
+  prefix: %q
+  lease_ttl: %d
+`, prefix, ttl)
 	}
 
 	tmpDir := t.TempDir()

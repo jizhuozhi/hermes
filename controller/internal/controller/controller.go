@@ -43,9 +43,9 @@ type Controller struct {
 	httpClient  *http.Client
 	logger      *zap.SugaredLogger
 	revision    atomic.Int64
+	isLeader    atomic.Bool
 	startedAt   time.Time
 	hostname    string
-	// reconcileCh serialises reconcile writes with the main-loop writes.
 	reconcileCh chan reconcileReq
 }
 
@@ -113,6 +113,22 @@ func (c *Controller) SetRevision(rev int64) {
 // Close releases resources.
 func (c *Controller) Close() {
 	c.etcdClient.Close()
+}
+
+func (c *Controller) IsLeader() bool {
+	return c.isLeader.Load()
+}
+
+func (c *Controller) SetLeader(v bool) {
+	c.isLeader.Store(v)
+}
+
+func (c *Controller) EtcdClient() *clientv3.Client {
+	return c.etcdClient
+}
+
+func (c *Controller) Hostname() string {
+	return c.hostname
 }
 
 // Run starts the main controller loop: initial reconcile, then short-poll for changes.

@@ -24,6 +24,9 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "/hermes/meta", cfg.Etcd.MetaPrefix)
 	assert.Empty(t, cfg.Auth.AccessKey)
 	assert.Empty(t, cfg.Auth.SecretKey)
+	assert.False(t, cfg.Election.Enabled)
+	assert.Equal(t, "/hermes/election", cfg.Election.Prefix)
+	assert.Equal(t, 15, cfg.Election.LeaseTTL)
 }
 
 func TestLoad_YAMLFile(t *testing.T) {
@@ -46,6 +49,10 @@ etcd:
 auth:
   access_key: "ak123"
   secret_key: "sk456"
+election:
+  enabled: true
+  prefix: "/my/election"
+  lease_ttl: 20
 `
 	tmp := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(tmp, []byte(yaml), 0644))
@@ -63,6 +70,9 @@ auth:
 	assert.Equal(t, "secret", cfg.Etcd.Password)
 	assert.Equal(t, "ak123", cfg.Auth.AccessKey)
 	assert.Equal(t, "sk456", cfg.Auth.SecretKey)
+	assert.True(t, cfg.Election.Enabled)
+	assert.Equal(t, "/my/election", cfg.Election.Prefix)
+	assert.Equal(t, 20, cfg.Election.LeaseTTL)
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
@@ -88,6 +98,9 @@ func TestLoad_EnvOverrides(t *testing.T) {
 		"HERMES_ETCD_PASSWORD":                   "envpass",
 		"HERMES_AUTH_ACCESS_KEY":                 "env_ak",
 		"HERMES_AUTH_SECRET_KEY":                 "env_sk",
+		"HERMES_ELECTION_ENABLED":                "true",
+		"HERMES_ELECTION_PREFIX":                 "/custom/election",
+		"HERMES_ELECTION_LEASE_TTL":              "30",
 	}
 
 	for k, v := range envVars {
@@ -110,6 +123,9 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	assert.Equal(t, "envpass", cfg.Etcd.Password)
 	assert.Equal(t, "env_ak", cfg.Auth.AccessKey)
 	assert.Equal(t, "env_sk", cfg.Auth.SecretKey)
+	assert.True(t, cfg.Election.Enabled)
+	assert.Equal(t, "/custom/election", cfg.Election.Prefix)
+	assert.Equal(t, 30, cfg.Election.LeaseTTL)
 }
 
 func TestLoad_EnvOverrideInvalidPollInterval(t *testing.T) {
@@ -145,4 +161,33 @@ controlplane:
 	cfg, err := Load(tmp)
 	require.NoError(t, err)
 	assert.Equal(t, "http://from-env:9080", cfg.ControlPlane.URL)
+}
+
+func TestLoad_ElectionDefaults(t *testing.T) {
+	yaml := `
+election:
+  enabled: true
+`
+	tmp := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(tmp, []byte(yaml), 0644))
+
+	cfg, err := Load(tmp)
+	require.NoError(t, err)
+	assert.True(t, cfg.Election.Enabled)
+	assert.Equal(t, "/hermes/election", cfg.Election.Prefix)
+	assert.Equal(t, 15, cfg.Election.LeaseTTL)
+}
+
+func TestLoad_ElectionZeroLeaseTTL(t *testing.T) {
+	yaml := `
+election:
+  enabled: true
+  lease_ttl: 0
+`
+	tmp := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(tmp, []byte(yaml), 0644))
+
+	cfg, err := Load(tmp)
+	require.NoError(t, err)
+	assert.Equal(t, 15, cfg.Election.LeaseTTL)
 }

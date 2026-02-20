@@ -13,6 +13,7 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `yaml:"controlplane"`
 	Etcd         EtcdConfig         `yaml:"etcd"`
 	Auth         AuthConfig         `yaml:"auth"`
+	Election     ElectionConfig     `yaml:"election"`
 }
 
 type ControlPlaneConfig struct {
@@ -39,6 +40,12 @@ type EtcdConfig struct {
 	Password       string   `yaml:"password"`
 }
 
+type ElectionConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Prefix   string `yaml:"prefix"`    // etcd election prefix, default "/hermes/election"
+	LeaseTTL int    `yaml:"lease_ttl"` // seconds, default 15
+}
+
 // Load reads configuration from a YAML file (if it exists) and applies
 // environment variable overrides. When the file does not exist, only
 // built-in defaults and environment variables are used — this allows
@@ -57,6 +64,10 @@ func Load(path string) (*Config, error) {
 			ClusterPrefix:  "/hermes/clusters",
 			InstancePrefix: "/hermes/instances",
 			MetaPrefix:     "/hermes/meta",
+		},
+		Election: ElectionConfig{
+			Prefix:   "/hermes/election",
+			LeaseTTL: 15,
 		},
 	}
 
@@ -114,10 +125,27 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("HERMES_AUTH_SECRET_KEY"); v != "" {
 		cfg.Auth.SecretKey = v
 	}
+	if v := os.Getenv("HERMES_ELECTION_ENABLED"); v != "" {
+		cfg.Election.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("HERMES_ELECTION_PREFIX"); v != "" {
+		cfg.Election.Prefix = v
+	}
+	if v := os.Getenv("HERMES_ELECTION_LEASE_TTL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Election.LeaseTTL = n
+		}
+	}
 
 	// Ensure namespace always has a value.
 	if cfg.ControlPlane.Namespace == "" {
 		cfg.ControlPlane.Namespace = "default"
+	}
+	if cfg.Election.Prefix == "" {
+		cfg.Election.Prefix = "/hermes/election"
+	}
+	if cfg.Election.LeaseTTL <= 0 {
+		cfg.Election.LeaseTTL = 15
 	}
 	return cfg, nil
 }

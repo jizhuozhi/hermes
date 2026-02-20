@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS controller_status (
     namespace         TEXT NOT NULL DEFAULT 'default',
     id                TEXT NOT NULL,
     status            TEXT NOT NULL DEFAULT '',
+    is_leader         BOOLEAN NOT NULL DEFAULT FALSE,
     started_at        TEXT NOT NULL DEFAULT '',
     last_heartbeat_at TEXT NOT NULL DEFAULT '',
     config_revision   BIGINT NOT NULL DEFAULT 0,
@@ -924,15 +925,16 @@ func (s *PgStore) ListGatewayInstances(ctx context.Context, ns string) ([]Gatewa
 
 func (s *PgStore) UpsertControllerStatus(ctx context.Context, ns string, ctrl *ControllerStatus) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO controller_status (namespace, id, status, started_at, last_heartbeat_at, config_revision, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		INSERT INTO controller_status (namespace, id, status, is_leader, started_at, last_heartbeat_at, config_revision, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 		ON CONFLICT (namespace, id) DO UPDATE SET
 			status = EXCLUDED.status,
+			is_leader = EXCLUDED.is_leader,
 			started_at = EXCLUDED.started_at,
 			last_heartbeat_at = EXCLUDED.last_heartbeat_at,
 			config_revision = EXCLUDED.config_revision,
 			updated_at = NOW()`,
-		ns, ctrl.ID, ctrl.Status, ctrl.StartedAt, ctrl.LastHeartbeatAt, ctrl.ConfigRevision)
+		ns, ctrl.ID, ctrl.Status, ctrl.IsLeader, ctrl.StartedAt, ctrl.LastHeartbeatAt, ctrl.ConfigRevision)
 	if err != nil {
 		return fmt.Errorf("pg upsert controller: %w", err)
 	}
@@ -942,9 +944,9 @@ func (s *PgStore) UpsertControllerStatus(ctx context.Context, ns string, ctrl *C
 func (s *PgStore) GetControllerStatus(ctx context.Context, ns string) (*ControllerStatus, error) {
 	var ctrl ControllerStatus
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, status, started_at, last_heartbeat_at, config_revision, updated_at
+		`SELECT id, status, is_leader, started_at, last_heartbeat_at, config_revision, updated_at
 		 FROM controller_status WHERE namespace = $1 ORDER BY updated_at DESC LIMIT 1`, ns).
-		Scan(&ctrl.ID, &ctrl.Status, &ctrl.StartedAt, &ctrl.LastHeartbeatAt, &ctrl.ConfigRevision, &ctrl.UpdatedAt)
+		Scan(&ctrl.ID, &ctrl.Status, &ctrl.IsLeader, &ctrl.StartedAt, &ctrl.LastHeartbeatAt, &ctrl.ConfigRevision, &ctrl.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

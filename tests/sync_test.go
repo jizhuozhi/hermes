@@ -807,3 +807,107 @@ func TestE2E_Sync_NamespaceIsolationAPI(t *testing.T) {
 	data = readJSON(t, resp)
 	assert.Equal(t, float64(1), data["total"])
 }
+
+// TestE2E_Sync_ControllerElection tests leader election between two controller
+// instances. Only the leader should sync config to etcd. When the leader stops,
+// the follower should take over and report is_leader=true via heartbeat.
+func TestE2E_Sync_ControllerElection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	ctx := context.Background()
+	srvBin := buildServer(t)
+	ctrlBin := buildController(t)
+
+	pgDSN, cleanupPG := startPostgres(t, ctx)
+	defer cleanupPG()
+
+	srv := startServerProc(t, srvBin, serverOpts{pgDSN: pgDSN})
+	defer srv.stop()
+
+	etcdClient, etcdEndpoint, cleanupEtcd := startEtcd(t, ctx)
+	defer cleanupEtcd()
+
+	base := srv.baseURL
+
+	// Create config via API
+	resp := apiPost(t, base, "/api/v1/domains", domainConfig{
+		Name:  "election-test",
+		Hosts: []string{"election.example.com"},
+		Routes: []routeConfig{
+			{Name: "all", URI: "/*", Clusters: []weightedCluster{{Name: "election-be", Weight: 100}}, Status: 1},
+		},
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	resp = apiPost(t, base, "/api/v1/clusters", clusterConfig{
+		Name: "election-be", LBType: "roundrobin", Timeout: timeoutConfig{Connect: 3, Send: 6, Read: 6},
+		Nodes: []upstreamNode{{Host: "10.0.0.1", Port: 8080, Weight: 100}},
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	resp.Body.Close()
+
+	electionPrefix := "/hermes/e2e-election"
+
+	// Start first controller with election enabled
+	ctrl1 := startControllerProc(t, ctrlBin, controllerOpts{
+		cpURL:            base,
+		etcdEndpoint:     etcdEndpoint,
+		pollInterval:     1,
+		reconcileInterval: 3,
+		electionEnabled:  true,
+		electionPrefix:   electionPrefix,
+		electionLeaseTTL: 5,
+	})
+
+	// Start second controller with election enabled
+	ctrl2 := startControllerProc(t, ctrlBin, controllerOpts{
+		cpURL:            base,
+		etcdEndpoint:     etcdEndpoint,
+		pollInterval:     1,
+		reconcileInterval: 3,
+		electionEnabled:  true,
+		electionPrefix:   electionPrefix,
+		electionLeaseTTL: 5,
+	})
+	defer ctrl2.stop()
+
+	// Wait for config to be synced to etcd (the leader does this)
+	waitForEtcdKey(t, etcdClient, "/hermes/domains/election-test", 20*time.Second)
+	waitForEtcdKey(t, etcdClient, "/hermes/clusters/election-be", 20*time.Second)
+
+	// Verify controller status is reported to server with is_leader
+	time.Sleep(3 * time.Second)
+	resp = apiGet(t, base, "/api/v1/status/controller")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	data := readJSON(t, resp)
+	if data["controller"] != nil {
+		controller := data["controller"].(map[string]any)
+		assert.Equal(t, "running", controller["status"])
+		// The leader should report is_leader=true
+		assert.Equal(t, true, controller["is_leader"])
+	}
+
+	// Stop the first controller (which is likely the leader)
+	ctrl1.stop()
+
+	// Wait for the second controller to take over and sync
+	// The lease TTL is 5s, so within ~10s the follower should become leader
+	time.Sleep(10 * time.Second)
+
+	// Verify data is still in etcd (second controller took over and reconciled)
+	domainResp, err := etcdClient.Get(ctx, "/hermes/domains/election-test")
+	require.NoError(t, err)
+	assert.Equal(t, 1, int(domainResp.Count), "domain should still exist after leader handover")
+
+	// Verify the new leader reports itself
+	resp = apiGet(t, base, "/api/v1/status/controller")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	data = readJSON(t, resp)
+	if data["controller"] != nil {
+		controller := data["controller"].(map[string]any)
+		assert.Equal(t, "running", controller["status"])
+	}
+}

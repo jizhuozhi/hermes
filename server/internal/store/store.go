@@ -193,6 +193,7 @@ type GatewayInstanceStatus struct {
 type ControllerStatus struct {
 	ID              string    `json:"id"`
 	Status          string    `json:"status"`
+	IsLeader        bool      `json:"is_leader"`
 	StartedAt       string    `json:"started_at"`
 	LastHeartbeatAt string    `json:"last_heartbeat_at"`
 	ConfigRevision  int64     `json:"config_revision"`

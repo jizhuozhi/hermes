@@ -18,9 +18,6 @@ import (
 
 func startPostgres(t *testing.T, ctx context.Context) (*PgStore, func()) {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
 
 	pgContainer, err := postgres.Run(ctx,
 		"postgres:16-alpine",
@@ -442,6 +439,7 @@ func TestControllerStatus(t *testing.T) {
 	ctrl := &ControllerStatus{
 		ID:              "ctrl-1",
 		Status:          "running",
+		IsLeader:        true,
 		StartedAt:       time.Now().Format(time.RFC3339),
 		LastHeartbeatAt: time.Now().Format(time.RFC3339),
 		ConfigRevision:  42,
@@ -455,7 +453,18 @@ func TestControllerStatus(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "ctrl-1", got.ID)
 	assert.Equal(t, "running", got.Status)
+	assert.True(t, got.IsLeader)
 	assert.Equal(t, int64(42), got.ConfigRevision)
+
+	// Update: lose leadership
+	ctrl.IsLeader = false
+	err = s.UpsertControllerStatus(ctx, ns, ctrl)
+	require.NoError(t, err)
+
+	got, err = s.GetControllerStatus(ctx, ns)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.False(t, got.IsLeader)
 }
 
 // Grafana Dashboards Tests

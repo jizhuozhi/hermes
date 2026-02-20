@@ -19,3 +19,10 @@ etcd:
 # auth:
 #   access_key: ""
 #   secret_key: ""
+
+# Leader election for HA deployment. When enabled, multiple controller
+# instances can run simultaneously but only the leader performs sync.
+# election:
+#   enabled: true
+#   prefix: "/hermes/election"
+#   lease_ttl: 15  # seconds
