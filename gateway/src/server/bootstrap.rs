@@ -563,6 +563,133 @@ async fn setup_consul_registry(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- metadata_matches ---
+
+    #[test]
+    fn metadata_matches_empty_filters() {
+        let meta = HashMap::from([("env".to_string(), "prod".to_string())]);
+        let filters = HashMap::new();
+        assert!(metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_single_match() {
+        let meta = HashMap::from([("env".to_string(), "prod".to_string())]);
+        let filters = HashMap::from([("env".to_string(), vec!["prod".to_string()])]);
+        assert!(metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_single_no_match() {
+        let meta = HashMap::from([("env".to_string(), "staging".to_string())]);
+        let filters = HashMap::from([("env".to_string(), vec!["prod".to_string()])]);
+        assert!(!metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_missing_key() {
+        let meta = HashMap::new();
+        let filters = HashMap::from([("env".to_string(), vec!["prod".to_string()])]);
+        assert!(!metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_multiple_allowed_values() {
+        let meta = HashMap::from([("env".to_string(), "staging".to_string())]);
+        let filters = HashMap::from([(
+            "env".to_string(),
+            vec!["prod".to_string(), "staging".to_string()],
+        )]);
+        assert!(metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_multiple_filters_all_match() {
+        let meta = HashMap::from([
+            ("env".to_string(), "prod".to_string()),
+            ("region".to_string(), "us-east".to_string()),
+        ]);
+        let filters = HashMap::from([
+            ("env".to_string(), vec!["prod".to_string()]),
+            ("region".to_string(), vec!["us-east".to_string()]),
+        ]);
+        assert!(metadata_matches(&meta, &filters));
+    }
+
+    #[test]
+    fn metadata_matches_multiple_filters_partial_match() {
+        let meta = HashMap::from([
+            ("env".to_string(), "prod".to_string()),
+            ("region".to_string(), "eu-west".to_string()),
+        ]);
+        let filters = HashMap::from([
+            ("env".to_string(), vec!["prod".to_string()]),
+            ("region".to_string(), vec!["us-east".to_string()]),
+        ]);
+        assert!(!metadata_matches(&meta, &filters));
+    }
+
+    // --- to_upstream_node ---
+
+    #[test]
+    fn to_upstream_node_basic() {
+        let consul_node = discovery::ConsulServiceNode {
+            service_id: "svc-1".to_string(),
+            service_address: "10.0.0.1".to_string(),
+            service_port: 8080,
+            service_meta: HashMap::new(),
+        };
+        let node = to_upstream_node(&consul_node);
+        assert_eq!(node.host, "10.0.0.1");
+        assert_eq!(node.port, 8080);
+        assert_eq!(node.weight, 1); // default weight
+    }
+
+    #[test]
+    fn to_upstream_node_with_weight() {
+        let consul_node = discovery::ConsulServiceNode {
+            service_id: "svc-2".to_string(),
+            service_address: "10.0.0.2".to_string(),
+            service_port: 9090,
+            service_meta: HashMap::from([("weight".to_string(), "5".to_string())]),
+        };
+        let node = to_upstream_node(&consul_node);
+        assert_eq!(node.weight, 5);
+    }
+
+    #[test]
+    fn to_upstream_node_invalid_weight_fallback() {
+        let consul_node = discovery::ConsulServiceNode {
+            service_id: "svc-3".to_string(),
+            service_address: "10.0.0.3".to_string(),
+            service_port: 80,
+            service_meta: HashMap::from([("weight".to_string(), "invalid".to_string())]),
+        };
+        let node = to_upstream_node(&consul_node);
+        assert_eq!(node.weight, 1); // fallback to 1
+    }
+
+    #[test]
+    fn to_upstream_node_preserves_metadata() {
+        let consul_node = discovery::ConsulServiceNode {
+            service_id: "svc-4".to_string(),
+            service_address: "10.0.0.4".to_string(),
+            service_port: 443,
+            service_meta: HashMap::from([
+                ("env".to_string(), "prod".to_string()),
+                ("version".to_string(), "v2".to_string()),
+            ]),
+        };
+        let node = to_upstream_node(&consul_node);
+        assert_eq!(node.metadata.get("env").unwrap(), "prod");
+        assert_eq!(node.metadata.get("version").unwrap(), "v2");
+    }
+}
+
 async fn wait_for_shutdown(shutdown: &Arc<Notify>) {
     let ctrl_c = tokio::signal::ctrl_c();
 

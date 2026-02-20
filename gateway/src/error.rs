@@ -31,3 +31,66 @@ impl fmt::Display for GatewayError {
 }
 
 impl std::error::Error for GatewayError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_no_route_match() {
+        assert_eq!(GatewayError::NoRouteMatch.to_string(), "no route matched");
+    }
+
+    #[test]
+    fn display_no_upstream() {
+        assert_eq!(
+            GatewayError::NoUpstream.to_string(),
+            "no upstream available"
+        );
+    }
+
+    #[test]
+    fn display_rate_limited() {
+        assert_eq!(GatewayError::RateLimited.to_string(), "rate limited");
+    }
+
+    #[test]
+    fn display_upstream_timeout() {
+        assert_eq!(
+            GatewayError::UpstreamTimeout.to_string(),
+            "upstream timeout"
+        );
+    }
+
+    #[test]
+    fn display_upstream_connect() {
+        assert_eq!(
+            GatewayError::UpstreamConnect("conn refused".to_string()).to_string(),
+            "upstream connect error: conn refused"
+        );
+    }
+
+    #[test]
+    fn display_consul() {
+        assert_eq!(
+            GatewayError::Consul("timeout".to_string()).to_string(),
+            "consul error: timeout"
+        );
+    }
+
+    #[test]
+    fn display_config() {
+        assert_eq!(
+            GatewayError::Config("bad yaml".to_string()).to_string(),
+            "config error: bad yaml"
+        );
+    }
+
+    #[test]
+    fn display_internal() {
+        assert_eq!(
+            GatewayError::Internal("oops".to_string()).to_string(),
+            "internal error: oops"
+        );
+    }
+}

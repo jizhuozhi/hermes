@@ -936,6 +936,338 @@ where
 /// byte stream.
 struct BodyStream(BoxBody);
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::UpstreamNode;
+    use http::{HeaderMap, HeaderName, HeaderValue};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
+
+    // --- negotiate_encoding ---
+
+    #[test]
+    fn negotiate_encoding_prefers_br() {
+        assert_eq!(negotiate_encoding("gzip, br"), Some("br"));
+    }
+
+    #[test]
+    fn negotiate_encoding_gzip_only() {
+        assert_eq!(negotiate_encoding("gzip"), Some("gzip"));
+    }
+
+    #[test]
+    fn negotiate_encoding_br_only() {
+        assert_eq!(negotiate_encoding("br"), Some("br"));
+    }
+
+    #[test]
+    fn negotiate_encoding_wildcard() {
+        assert_eq!(negotiate_encoding("*"), Some("br"));
+    }
+
+    #[test]
+    fn negotiate_encoding_none() {
+        assert_eq!(negotiate_encoding("deflate"), None);
+    }
+
+    #[test]
+    fn negotiate_encoding_empty() {
+        assert_eq!(negotiate_encoding(""), None);
+    }
+
+    #[test]
+    fn negotiate_encoding_br_q0_excluded() {
+        assert_eq!(negotiate_encoding("br;q=0, gzip"), Some("gzip"));
+    }
+
+    #[test]
+    fn negotiate_encoding_all_q0() {
+        assert_eq!(negotiate_encoding("br;q=0, gzip;q=0"), None);
+    }
+
+    #[test]
+    fn negotiate_encoding_with_spaces() {
+        assert_eq!(negotiate_encoding("  gzip , br ; q=1.0 "), Some("br"));
+    }
+
+    #[test]
+    fn negotiate_encoding_negative_q() {
+        assert_eq!(negotiate_encoding("br;q=-1, gzip"), Some("gzip"));
+    }
+
+    // --- is_server_error ---
+
+    #[test]
+    fn is_server_error_500() {
+        assert!(is_server_error(500));
+    }
+
+    #[test]
+    fn is_server_error_503() {
+        assert!(is_server_error(503));
+    }
+
+    #[test]
+    fn is_server_error_599() {
+        assert!(is_server_error(599));
+    }
+
+    #[test]
+    fn is_server_error_200() {
+        assert!(!is_server_error(200));
+    }
+
+    #[test]
+    fn is_server_error_404() {
+        assert!(!is_server_error(404));
+    }
+
+    #[test]
+    fn is_server_error_600() {
+        assert!(!is_server_error(600));
+    }
+
+    // --- target_uri_capacity ---
+
+    #[test]
+    fn target_uri_capacity_basic() {
+        let cap = target_uri_capacity("/api/v1/users");
+        assert!(cap >= 30 + "/api/v1/users".len());
+    }
+
+    #[test]
+    fn target_uri_capacity_empty() {
+        let cap = target_uri_capacity("");
+        assert_eq!(cap, 30);
+    }
+
+    // --- remove_hop_headers ---
+
+    #[test]
+    fn remove_hop_headers_removes_all() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONNECTION, HeaderValue::from_static("keep-alive"));
+        headers.insert(
+            HeaderName::from_static("keep-alive"),
+            HeaderValue::from_static("timeout=5"),
+        );
+        headers.insert(
+            HeaderName::from_static("proxy-authenticate"),
+            HeaderValue::from_static("Basic"),
+        );
+        headers.insert(
+            HeaderName::from_static("proxy-authorization"),
+            HeaderValue::from_static("Basic abc"),
+        );
+        headers.insert(
+            HeaderName::from_static("te"),
+            HeaderValue::from_static("trailers"),
+        );
+        headers.insert(
+            HeaderName::from_static("trailers"),
+            HeaderValue::from_static("foo"),
+        );
+        headers.insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
+        headers.insert(
+            HeaderName::from_static("upgrade"),
+            HeaderValue::from_static("websocket"),
+        );
+        // Non-hop header should be preserved.
+        headers.insert(
+            HeaderName::from_static("x-custom"),
+            HeaderValue::from_static("keep"),
+        );
+
+        remove_hop_headers(&mut headers);
+
+        assert!(!headers.contains_key(CONNECTION));
+        assert!(!headers.contains_key("keep-alive"));
+        assert!(!headers.contains_key("proxy-authenticate"));
+        assert!(!headers.contains_key("proxy-authorization"));
+        assert!(!headers.contains_key("te"));
+        assert!(!headers.contains_key("trailers"));
+        assert!(!headers.contains_key(TRANSFER_ENCODING));
+        assert!(!headers.contains_key("upgrade"));
+        assert_eq!(headers.get("x-custom").unwrap(), "keep");
+    }
+
+    // --- apply_header_transforms ---
+
+    #[test]
+    fn apply_header_transforms_set() {
+        let ops = vec![HeaderOp {
+            name: HeaderName::from_static("x-env"),
+            value: HeaderValue::from_static("prod"),
+            action: HeaderOpAction::Set,
+        }];
+        let mut headers = HeaderMap::new();
+        apply_header_transforms(&ops, &mut headers);
+        assert_eq!(headers.get("x-env").unwrap(), "prod");
+    }
+
+    #[test]
+    fn apply_header_transforms_add() {
+        let ops = vec![HeaderOp {
+            name: HeaderName::from_static("x-tag"),
+            value: HeaderValue::from_static("v1"),
+            action: HeaderOpAction::Add,
+        }];
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-tag"),
+            HeaderValue::from_static("v0"),
+        );
+        apply_header_transforms(&ops, &mut headers);
+        let vals: Vec<_> = headers.get_all("x-tag").iter().collect();
+        assert_eq!(vals.len(), 2);
+    }
+
+    #[test]
+    fn apply_header_transforms_remove() {
+        let ops = vec![HeaderOp {
+            name: HeaderName::from_static("x-secret"),
+            value: HeaderValue::from_static(""),
+            action: HeaderOpAction::Remove,
+        }];
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-secret"),
+            HeaderValue::from_static("abc"),
+        );
+        apply_header_transforms(&ops, &mut headers);
+        assert!(!headers.contains_key("x-secret"));
+    }
+
+    #[test]
+    fn apply_header_transforms_multiple_ops() {
+        let ops = vec![
+            HeaderOp {
+                name: HeaderName::from_static("x-a"),
+                value: HeaderValue::from_static("1"),
+                action: HeaderOpAction::Set,
+            },
+            HeaderOp {
+                name: HeaderName::from_static("x-b"),
+                value: HeaderValue::from_static("2"),
+                action: HeaderOpAction::Set,
+            },
+            HeaderOp {
+                name: HeaderName::from_static("x-a"),
+                value: HeaderValue::from_static(""),
+                action: HeaderOpAction::Remove,
+            },
+        ];
+        let mut headers = HeaderMap::new();
+        apply_header_transforms(&ops, &mut headers);
+        assert!(!headers.contains_key("x-a"));
+        assert_eq!(headers.get("x-b").unwrap(), "2");
+    }
+
+    // --- inject_forwarded_headers ---
+
+    #[test]
+    fn inject_forwarded_headers_basic() {
+        let mut headers = HeaderMap::new();
+        let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 12345);
+        inject_forwarded_headers(&mut headers, peer, "example.com");
+
+        assert_eq!(headers.get("x-forwarded-for").unwrap(), "10.0.0.1");
+        assert_eq!(headers.get("x-forwarded-proto").unwrap(), "http");
+        assert_eq!(headers.get("x-forwarded-host").unwrap(), "example.com");
+        assert_eq!(headers.get("x-real-ip").unwrap(), "10.0.0.1");
+    }
+
+    #[test]
+    fn inject_forwarded_headers_appends_xff() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-forwarded-for"),
+            HeaderValue::from_static("1.2.3.4"),
+        );
+        let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 8080);
+        inject_forwarded_headers(&mut headers, peer, "test.com");
+
+        assert_eq!(headers.get("x-forwarded-for").unwrap(), "1.2.3.4, 10.0.0.2");
+    }
+
+    #[test]
+    fn inject_forwarded_headers_preserves_existing_proto() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-forwarded-proto"),
+            HeaderValue::from_static("https"),
+        );
+        let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 443);
+        inject_forwarded_headers(&mut headers, peer, "secure.com");
+
+        // Should NOT overwrite existing proto.
+        assert_eq!(headers.get("x-forwarded-proto").unwrap(), "https");
+    }
+
+    #[test]
+    fn inject_forwarded_headers_empty_host() {
+        let mut headers = HeaderMap::new();
+        let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 80);
+        inject_forwarded_headers(&mut headers, peer, "");
+
+        assert!(!headers.contains_key("x-forwarded-host"));
+    }
+
+    // --- apply_host_header ---
+
+    fn make_upstream_target(pass_host: &str, upstream_host: Option<&str>) -> UpstreamTarget {
+        let node = UpstreamNode {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+            weight: 1,
+            metadata: Default::default(),
+        };
+        UpstreamTarget {
+            instance: (&node).into(),
+            scheme: Arc::from("http"),
+            pass_host: Arc::from(pass_host),
+            upstream_host: upstream_host.map(Arc::from),
+        }
+    }
+
+    #[test]
+    fn apply_host_header_node_mode() {
+        let target = make_upstream_target("node", None);
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("original.com"));
+        apply_host_header(&mut headers, &target, "127.0.0.1:8080");
+        assert_eq!(headers.get(HOST).unwrap(), "127.0.0.1:8080");
+    }
+
+    #[test]
+    fn apply_host_header_rewrite_mode() {
+        let target = make_upstream_target("rewrite", Some("custom.internal"));
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("original.com"));
+        apply_host_header(&mut headers, &target, "127.0.0.1:8080");
+        assert_eq!(headers.get(HOST).unwrap(), "custom.internal");
+    }
+
+    #[test]
+    fn apply_host_header_pass_mode() {
+        let target = make_upstream_target("pass", None);
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("original.com"));
+        apply_host_header(&mut headers, &target, "127.0.0.1:8080");
+        assert_eq!(headers.get(HOST).unwrap(), "original.com");
+    }
+
+    #[test]
+    fn apply_host_header_rewrite_no_upstream_host() {
+        let target = make_upstream_target("rewrite", None);
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("original.com"));
+        apply_host_header(&mut headers, &target, "127.0.0.1:8080");
+        assert_eq!(headers.get(HOST).unwrap(), "original.com");
+    }
+}
+
 impl futures_util::Stream for BodyStream {
     type Item = std::io::Result<Bytes>;
 

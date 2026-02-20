@@ -413,3 +413,219 @@ fn build_cluster_http_client(
         .pool_max_idle_per_host(pool_cfg.size)
         .build(https)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ClusterConfig, KeepalivePoolConfig, TimeoutConfig, UpstreamNode};
+
+    fn test_cluster_config(name: &str, nodes: Vec<UpstreamNode>) -> ClusterConfig {
+        ClusterConfig {
+            name: name.to_string(),
+            lb_type: "roundrobin".to_string(),
+            timeout: TimeoutConfig::default(),
+            scheme: "http".to_string(),
+            pass_host: "pass".to_string(),
+            upstream_host: None,
+            nodes,
+            discovery_type: None,
+            service_name: None,
+            discovery_args: None,
+            keepalive_pool: KeepalivePoolConfig::default(),
+            health_check: None,
+            retry: None,
+            circuit_breaker: None,
+            tls_verify: false,
+        }
+    }
+
+    fn test_node(host: &str, port: u16) -> UpstreamNode {
+        UpstreamNode {
+            host: host.to_string(),
+            port,
+            weight: 1,
+            metadata: Default::default(),
+        }
+    }
+
+    // --- Cluster health state ---
+
+    #[test]
+    fn cluster_node_healthy_by_default() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        assert!(cluster.is_node_healthy("10.0.0.1:80"));
+    }
+
+    #[test]
+    fn cluster_mark_unhealthy_and_healthy() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        cluster.mark_node_unhealthy("10.0.0.1:80");
+        assert!(!cluster.is_node_healthy("10.0.0.1:80"));
+
+        cluster.mark_node_healthy("10.0.0.1:80");
+        assert!(cluster.is_node_healthy("10.0.0.1:80"));
+    }
+
+    #[test]
+    fn cluster_record_health_check_increments() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        assert_eq!(cluster.record_health_check("10.0.0.1:80"), 1);
+        assert_eq!(cluster.record_health_check("10.0.0.1:80"), 2);
+        assert_eq!(cluster.record_health_check("10.0.0.1:80"), 3);
+    }
+
+    #[test]
+    fn cluster_reset_health_count() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        cluster.record_health_check("10.0.0.1:80");
+        cluster.record_health_check("10.0.0.1:80");
+        cluster.reset_health_count("10.0.0.1:80");
+        assert_eq!(cluster.record_health_check("10.0.0.1:80"), 1);
+    }
+
+    // --- Cluster node count / effective_nodes ---
+
+    #[test]
+    fn cluster_node_count_static() {
+        let cluster = Cluster::new(test_cluster_config(
+            "c1",
+            vec![test_node("10.0.0.1", 80), test_node("10.0.0.2", 80)],
+        ));
+        assert_eq!(cluster.node_count(), 2);
+    }
+
+    #[test]
+    fn cluster_effective_nodes_static() {
+        let nodes = vec![test_node("10.0.0.1", 80)];
+        let cluster = Cluster::new(test_cluster_config("c1", nodes.clone()));
+        let effective = cluster.effective_nodes();
+        assert_eq!(effective.len(), 1);
+        assert_eq!(effective[0].host, "10.0.0.1");
+    }
+
+    #[test]
+    fn cluster_discovered_nodes_override_static() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        let discovered = vec![test_node("10.0.0.2", 80), test_node("10.0.0.3", 80)];
+        cluster.update_discovered_nodes(discovered);
+        assert_eq!(cluster.node_count(), 2);
+        assert_eq!(cluster.effective_nodes()[0].host, "10.0.0.2");
+    }
+
+    // --- Cluster purge_stale_nodes ---
+
+    #[test]
+    fn cluster_purge_stale_nodes_cleans_health() {
+        let cluster = Cluster::new(test_cluster_config(
+            "c1",
+            vec![test_node("10.0.0.1", 80), test_node("10.0.0.2", 80)],
+        ));
+        cluster.mark_node_unhealthy("10.0.0.1:80");
+        cluster.mark_node_unhealthy("10.0.0.2:80");
+        cluster.record_health_check("10.0.0.1:80");
+        cluster.record_health_check("10.0.0.2:80");
+
+        // Update to only one node — the other should be purged.
+        cluster.update_discovered_nodes(vec![test_node("10.0.0.1", 80)]);
+
+        assert!(!cluster.is_node_healthy("10.0.0.1:80"));
+        // 10.0.0.2:80 was purged, so default (true) should be returned.
+        assert!(cluster.is_node_healthy("10.0.0.2:80"));
+    }
+
+    // --- Cluster update_config ---
+
+    #[test]
+    fn cluster_update_config_preserves_health() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        cluster.mark_node_unhealthy("10.0.0.1:80");
+
+        let new_config = test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]);
+        let updated = cluster.update_config(new_config);
+
+        // Health state should be preserved.
+        assert!(!updated.is_node_healthy("10.0.0.1:80"));
+    }
+
+    #[test]
+    fn cluster_update_config_changes_name() {
+        let cluster = Cluster::new(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        let new_config = test_cluster_config("c2", vec![test_node("10.0.0.1", 80)]);
+        let updated = cluster.update_config(new_config);
+        assert_eq!(updated.name(), "c2");
+    }
+
+    // --- ClusterStore ---
+
+    #[test]
+    fn cluster_store_upsert_and_get() {
+        let store = ClusterStore::new();
+        store.upsert(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+
+        let cluster = store.get("c1");
+        assert!(cluster.is_some());
+        assert_eq!(cluster.unwrap().name(), "c1");
+    }
+
+    #[test]
+    fn cluster_store_get_nonexistent() {
+        let store = ClusterStore::new();
+        assert!(store.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn cluster_store_remove() {
+        let store = ClusterStore::new();
+        store.upsert(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        assert!(store.remove("c1"));
+        assert!(store.get("c1").is_none());
+    }
+
+    #[test]
+    fn cluster_store_remove_nonexistent() {
+        let store = ClusterStore::new();
+        assert!(!store.remove("nonexistent"));
+    }
+
+    #[test]
+    fn cluster_store_upsert_updates_existing() {
+        let store = ClusterStore::new();
+        store.upsert(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+
+        // Mark a node unhealthy.
+        if let Some(c) = store.get("c1") {
+            c.mark_node_unhealthy("10.0.0.1:80");
+        }
+
+        // Upsert with same config — should preserve health state.
+        store.upsert(test_cluster_config("c1", vec![test_node("10.0.0.1", 80)]));
+        let c = store.get("c1").unwrap();
+        // Note: upsert calls update_config which preserves health state via Arc clone.
+        // However purge_stale_nodes is called, so the node should still be present.
+        assert_eq!(c.name(), "c1");
+    }
+
+    #[test]
+    fn cluster_store_for_each() {
+        let store = ClusterStore::new();
+        store.upsert(test_cluster_config("a", vec![]));
+        store.upsert(test_cluster_config("b", vec![]));
+
+        let mut names = Vec::new();
+        store.for_each(|name, _| names.push(name.to_string()));
+        names.sort();
+        assert_eq!(names, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn cluster_store_init_from_configs() {
+        let store = ClusterStore::new();
+        let configs = vec![
+            test_cluster_config("x", vec![]),
+            test_cluster_config("y", vec![]),
+        ];
+        store.init_from_configs(&configs);
+        assert!(store.get("x").is_some());
+        assert!(store.get("y").is_some());
+    }
+}
