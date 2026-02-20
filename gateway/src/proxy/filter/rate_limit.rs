@@ -578,8 +578,14 @@ mod tests {
             rejected_code: 429,
         };
         assert_eq!(
-            RateLimiter::extract_key(&config_route, "my-route", "example.com", "/api/v1", &test_ip)
-                .as_ref(),
+            RateLimiter::extract_key(
+                &config_route,
+                "my-route",
+                "example.com",
+                "/api/v1",
+                &test_ip
+            )
+            .as_ref(),
             "my-route"
         );
 
@@ -593,8 +599,7 @@ mod tests {
             rejected_code: 429,
         };
         assert_eq!(
-            RateLimiter::extract_key(&config_remote, "r", "example.com", "/api", &test_ip)
-                .as_ref(),
+            RateLimiter::extract_key(&config_remote, "r", "example.com", "/api", &test_ip).as_ref(),
             "10.0.0.1"
         );
 
@@ -608,8 +613,7 @@ mod tests {
             rejected_code: 429,
         };
         assert_eq!(
-            RateLimiter::extract_key(&config_uri, "r", "example.com", "/api/v1", &test_ip)
-                .as_ref(),
+            RateLimiter::extract_key(&config_uri, "r", "example.com", "/api/v1", &test_ip).as_ref(),
             "/api/v1"
         );
 
