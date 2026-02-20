@@ -342,6 +342,7 @@ export default {
       cluster: defaultCluster(),
       isEdit: false,
       clusterName: '',
+      resourceVersion: 0,
       error: null,
       validationErrors: [],
       saving: false,
@@ -391,7 +392,8 @@ export default {
       this.clusterName = name
       try {
         const res = await api.getCluster(name)
-        this.cluster = res.data
+        this.cluster = res.data.cluster
+        this.resourceVersion = res.data.resource_version || 0
         this.discoveryType = this.cluster.discovery_type || ''
         this.serviceName = this.cluster.service_name || ''
         // Hydrate metadataRules from discovery_args.metadata_match
@@ -526,14 +528,18 @@ export default {
       }
       try {
         if (this.isEdit) {
-          await api.updateCluster(this.clusterName, parsed)
+          parsed.resource_version = this.resourceVersion
+          const res = await api.updateCluster(this.clusterName, parsed)
+          this.resourceVersion = res.data.resource_version || this.resourceVersion
         } else {
           await api.createCluster(parsed)
         }
         this.$router.push('/clusters')
       } catch (e) {
         const data = e.response?.data
-        if (data?.errors) {
+        if (e.response?.status === 409) {
+          this.error = data?.error || 'Conflict: this cluster has been modified by another user. Please refresh and try again.'
+        } else if (data?.errors) {
           this.validationErrors = data.errors
         } else {
           this.error = data?.error || e.message
@@ -622,14 +628,18 @@ export default {
 
       try {
         if (this.isEdit) {
-          await api.updateCluster(this.clusterName, this.cluster)
+          this.cluster.resource_version = this.resourceVersion
+          const res = await api.updateCluster(this.clusterName, this.cluster)
+          this.resourceVersion = res.data.resource_version || this.resourceVersion
         } else {
           await api.createCluster(this.cluster)
         }
         this.$router.push('/clusters')
       } catch (e) {
         const data = e.response?.data
-        if (data?.errors) {
+        if (e.response?.status === 409) {
+          this.error = data?.error || 'Conflict: this cluster has been modified by another user. Please refresh and try again.'
+        } else if (data?.errors) {
           this.validationErrors = data.errors
         } else {
           this.error = data?.error || e.message

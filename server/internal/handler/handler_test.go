@@ -21,6 +21,8 @@ import (
 type mockStore struct {
 	domains    map[string]map[string]*model.DomainConfig // ns → name → config
 	clusters   map[string]map[string]*model.ClusterConfig
+	domainRVs  map[string]map[string]int64 // ns → name → resource_version
+	clusterRVs map[string]map[string]int64
 	creds      map[string][]store.APICredential
 	credsByAK  map[string]*store.APICredential
 	dashboards map[string][]store.GrafanaDashboard
@@ -36,6 +38,8 @@ func newMockStore() *mockStore {
 	return &mockStore{
 		domains:    make(map[string]map[string]*model.DomainConfig),
 		clusters:   make(map[string]map[string]*model.ClusterConfig),
+		domainRVs:  make(map[string]map[string]int64),
+		clusterRVs: make(map[string]map[string]int64),
 		creds:      make(map[string][]store.APICredential),
 		credsByAK:  make(map[string]*store.APICredential),
 		dashboards: make(map[string][]store.GrafanaDashboard),
@@ -55,17 +59,47 @@ func (m *mockStore) ListDomains(_ context.Context, ns string) ([]model.DomainCon
 	return result, nil
 }
 
-func (m *mockStore) GetDomain(_ context.Context, ns, name string) (*model.DomainConfig, error) {
+func (m *mockStore) GetDomain(_ context.Context, ns, name string) (*model.DomainConfig, int64, error) {
 	if nsm, ok := m.domains[ns]; ok {
-		return nsm[name], nil
+		if d, exists := nsm[name]; exists {
+			rv := int64(1)
+			if rvm, ok := m.domainRVs[ns]; ok {
+				if r, ok := rvm[name]; ok {
+					rv = r
+				}
+			}
+			return d, rv, nil
+		}
 	}
-	return nil, nil
+	return nil, 0, nil
 }
 
-func (m *mockStore) PutDomain(_ context.Context, ns string, d *model.DomainConfig, action, operator string) (int64, error) {
+func (m *mockStore) PutDomain(_ context.Context, ns string, d *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error) {
 	if m.domains[ns] == nil {
 		m.domains[ns] = make(map[string]*model.DomainConfig)
 	}
+	if m.domainRVs[ns] == nil {
+		m.domainRVs[ns] = make(map[string]int64)
+	}
+
+	currentRV := m.domainRVs[ns][d.Name]
+	_, exists := m.domains[ns][d.Name]
+
+	if expectedVersion == 0 {
+		if exists {
+			return 0, store.ErrConflict
+		}
+		m.domainRVs[ns][d.Name] = 1
+	} else if expectedVersion > 0 {
+		if currentRV != expectedVersion {
+			return 0, store.ErrConflict
+		}
+		m.domainRVs[ns][d.Name] = currentRV + 1
+	} else {
+		// bypass OCC (-1)
+		m.domainRVs[ns][d.Name] = currentRV + 1
+	}
+
 	m.domains[ns][d.Name] = d
 	m.revision++
 	m.changes = append(m.changes, store.ChangeEvent{Revision: m.revision, Kind: "domain", Name: d.Name, Action: action, Domain: d})
@@ -92,17 +126,46 @@ func (m *mockStore) ListClusters(_ context.Context, ns string) ([]model.ClusterC
 	return result, nil
 }
 
-func (m *mockStore) GetCluster(_ context.Context, ns, name string) (*model.ClusterConfig, error) {
+func (m *mockStore) GetCluster(_ context.Context, ns, name string) (*model.ClusterConfig, int64, error) {
 	if nsm, ok := m.clusters[ns]; ok {
-		return nsm[name], nil
+		if c, exists := nsm[name]; exists {
+			rv := int64(1)
+			if rvm, ok := m.clusterRVs[ns]; ok {
+				if r, ok := rvm[name]; ok {
+					rv = r
+				}
+			}
+			return c, rv, nil
+		}
 	}
-	return nil, nil
+	return nil, 0, nil
 }
 
-func (m *mockStore) PutCluster(_ context.Context, ns string, c *model.ClusterConfig, action, operator string) (int64, error) {
+func (m *mockStore) PutCluster(_ context.Context, ns string, c *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error) {
 	if m.clusters[ns] == nil {
 		m.clusters[ns] = make(map[string]*model.ClusterConfig)
 	}
+	if m.clusterRVs[ns] == nil {
+		m.clusterRVs[ns] = make(map[string]int64)
+	}
+
+	currentRV := m.clusterRVs[ns][c.Name]
+	_, exists := m.clusters[ns][c.Name]
+
+	if expectedVersion == 0 {
+		if exists {
+			return 0, store.ErrConflict
+		}
+		m.clusterRVs[ns][c.Name] = 1
+	} else if expectedVersion > 0 {
+		if currentRV != expectedVersion {
+			return 0, store.ErrConflict
+		}
+		m.clusterRVs[ns][c.Name] = currentRV + 1
+	} else {
+		m.clusterRVs[ns][c.Name] = currentRV + 1
+	}
+
 	m.clusters[ns][c.Name] = c
 	m.revision++
 	return m.revision, nil
@@ -385,7 +448,7 @@ func TestDomainHandler_CreateDomain_Conflict(t *testing.T) {
 			{Name: "r1", URI: "/", Clusters: []model.WeightedCluster{{Name: "backend", Weight: 100}}, Status: 1},
 		},
 	}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	body := jsonBody(d)
 	r := httptest.NewRequest("POST", "/api/v1/domains", body)
@@ -432,7 +495,7 @@ func TestDomainHandler_GetDomain(t *testing.T) {
 			{Name: "r1", URI: "/", Clusters: []model.WeightedCluster{{Name: "backend", Weight: 100}}},
 		},
 	}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/domains/api", nil)
 	r = withNamespace(r, "default")
@@ -443,7 +506,9 @@ func TestDomainHandler_GetDomain(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	resp := decodeResp(t, w)
-	assert.Equal(t, "api", resp["name"])
+	domain := resp["domain"].(map[string]any)
+	assert.Equal(t, "api", domain["name"])
+	assert.NotNil(t, resp["resource_version"])
 }
 
 func TestDomainHandler_GetDomain_NotFound(t *testing.T) {
@@ -464,7 +529,7 @@ func TestDomainHandler_ListDomains(t *testing.T) {
 	h := NewDomainHandler(ms, testLogger())
 
 	d := &model.DomainConfig{Name: "api", Hosts: []string{"api.example.com"}}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/domains", nil)
 	r = withNamespace(r, "default")
@@ -488,13 +553,12 @@ func TestDomainHandler_UpdateDomain(t *testing.T) {
 			{Name: "r1", URI: "/", Clusters: []model.WeightedCluster{{Name: "c", Weight: 1}}},
 		},
 	}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
-	updated := model.DomainConfig{
-		Hosts: []string{"api-v2.example.com"},
-		Routes: []model.RouteConfig{
-			{Name: "r1", URI: "/", Clusters: []model.WeightedCluster{{Name: "c", Weight: 1}}},
-		},
+	updated := map[string]any{
+		"hosts":            []string{"api-v2.example.com"},
+		"routes":           []map[string]any{{"name": "r1", "uri": "/", "clusters": []map[string]any{{"name": "c", "weight": 1}}}},
+		"resource_version": 1,
 	}
 	body := jsonBody(updated)
 	r := httptest.NewRequest("PUT", "/api/v1/domains/api", body)
@@ -510,14 +574,14 @@ func TestDomainHandler_UpdateDomain_NotFound(t *testing.T) {
 	ms := newMockStore()
 	h := NewDomainHandler(ms, testLogger())
 
-	body := jsonBody(model.DomainConfig{Hosts: []string{"a.com"}})
+	body := jsonBody(map[string]any{"hosts": []string{"a.com"}, "resource_version": 1})
 	r := httptest.NewRequest("PUT", "/api/v1/domains/nonexistent", body)
 	r = withNamespace(r, "default")
 	setPathValue(r, "name", "nonexistent")
 	w := httptest.NewRecorder()
 
 	h.UpdateDomain(w, r)
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
 func TestDomainHandler_DeleteDomain(t *testing.T) {
@@ -525,7 +589,7 @@ func TestDomainHandler_DeleteDomain(t *testing.T) {
 	h := NewDomainHandler(ms, testLogger())
 
 	d := &model.DomainConfig{Name: "api", Hosts: []string{"a.com"}}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("DELETE", "/api/v1/domains/api", nil)
 	r = withNamespace(r, "default")
@@ -565,7 +629,7 @@ func TestClusterHandler_CreateCluster_Conflict(t *testing.T) {
 		Timeout: model.TimeoutConfig{Connect: 1, Read: 1},
 		Nodes:   []model.UpstreamNode{{Host: "h", Port: 80, Weight: 1}},
 	}
-	ms.PutCluster(context.Background(), "default", c, "create", "test")
+	ms.PutCluster(context.Background(), "default", c, "create", "test", -1)
 
 	body := jsonBody(c)
 	r := httptest.NewRequest("POST", "/api/v1/clusters", body)
@@ -599,7 +663,7 @@ func TestClusterHandler_GetCluster(t *testing.T) {
 		Timeout: model.TimeoutConfig{Connect: 1, Read: 1},
 		Nodes:   []model.UpstreamNode{{Host: "h", Port: 80, Weight: 1}},
 	}
-	ms.PutCluster(context.Background(), "default", c, "create", "test")
+	ms.PutCluster(context.Background(), "default", c, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/clusters/backend", nil)
 	r = withNamespace(r, "default")
@@ -628,7 +692,7 @@ func TestClusterHandler_DeleteCluster(t *testing.T) {
 	h := NewClusterHandler(ms, testLogger())
 
 	c := &model.ClusterConfig{Name: "backend", LBType: "roundrobin", Timeout: model.TimeoutConfig{Connect: 1, Read: 1}, Nodes: []model.UpstreamNode{{Host: "h", Port: 80, Weight: 1}}}
-	ms.PutCluster(context.Background(), "default", c, "create", "test")
+	ms.PutCluster(context.Background(), "default", c, "create", "test", -1)
 
 	r := httptest.NewRequest("DELETE", "/api/v1/clusters/backend", nil)
 	r = withNamespace(r, "default")
@@ -659,7 +723,7 @@ func TestWatchHandler_WatchConfig(t *testing.T) {
 	h := NewWatchHandler(ms, testLogger())
 
 	d := &model.DomainConfig{Name: "api", Hosts: []string{"a.com"}}
-	ms.PutDomain(context.Background(), "default", d, "create", "test")
+	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/config/watch?revision=0", nil)
 	r = withNamespace(r, "default")

@@ -104,7 +104,7 @@ func TestE2E_Auth_CredentialLifecycle(t *testing.T) {
 	resp = hmacRequest(t, "GET", base+"/api/v1/domains/authed-domain", ak, sk, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	data := readJSON(t, resp)
-	assert.Equal(t, "authed-domain", data["name"])
+	assert.Equal(t, "authed-domain", data["domain"].(map[string]any)["name"])
 
 	// List credentials
 	resp = hmacRequest(t, "GET", base+"/api/v1/credentials", ak, sk, nil)
@@ -1095,7 +1095,7 @@ func TestE2E_OIDC_BearerAuthentication(t *testing.T) {
 	resp = bearerRequest(t, "GET", base+"/api/v1/domains/oidc-domain", accessToken, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	data := readJSON(t, resp)
-	assert.Equal(t, "oidc-domain", data["name"])
+	assert.Equal(t, "oidc-domain", data["domain"].(map[string]any)["name"])
 }
 
 // Token Refresh
@@ -1658,7 +1658,7 @@ func TestE2E_OIDC_HMACCoexistence(t *testing.T) {
 	resp = bearerRequest(t, "GET", base+"/api/v1/domains/hmac-domain", oidcToken, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	data := readJSON(t, resp)
-	assert.Equal(t, "hmac-domain", data["name"])
+	assert.Equal(t, "hmac-domain", data["domain"].(map[string]any)["name"])
 
 	// Unauthenticated → 401 (credentials exist now, bootstrap mode is off).
 	resp = apiGet(t, base, "/api/v1/domains")
@@ -1974,7 +1974,7 @@ func TestE2E_Builtin_HMACCoexistence(t *testing.T) {
 	resp = bearerRequest(t, "GET", base+"/api/v1/domains/builtin-hmac-domain", token, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	data := readJSON(t, resp)
-	assert.Equal(t, "builtin-hmac-domain", data["name"])
+	assert.Equal(t, "builtin-hmac-domain", data["domain"].(map[string]any)["name"])
 }
 
 // Builtin User CRUD (Admin)

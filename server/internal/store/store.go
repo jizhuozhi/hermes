@@ -2,11 +2,18 @@ package store
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"time"
 
 	"github.com/jizhuozhi/hermes/server/internal/model"
 )
+
+// ErrConflict is returned when an optimistic concurrency check fails.
+// The caller provided an expectedVersion that doesn't match the current
+// resource_version in the database, indicating another user has modified
+// the resource concurrently.
+var ErrConflict = errors.New("optimistic concurrency conflict: resource has been modified by another user")
 
 // DefaultNamespace is used when no namespace is specified.
 const DefaultNamespace = "default"
@@ -48,14 +55,14 @@ type Store interface {
 
 	// Domain CRUD
 	ListDomains(ctx context.Context, ns string) ([]model.DomainConfig, error)
-	GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, error)
-	PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string) (int64, error)
+	GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, int64, error) // returns (config, resourceVersion, err)
+	PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error)
 	DeleteDomain(ctx context.Context, ns, name, operator string) (int64, error)
 
 	// Cluster CRUD
 	ListClusters(ctx context.Context, ns string) ([]model.ClusterConfig, error)
-	GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, error)
-	PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string) (int64, error)
+	GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, int64, error) // returns (config, resourceVersion, err)
+	PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error)
 	DeleteCluster(ctx context.Context, ns, name, operator string) (int64, error)
 
 	// Bulk

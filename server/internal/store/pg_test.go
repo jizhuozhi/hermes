@@ -87,38 +87,40 @@ func TestDomainCRUD(t *testing.T) {
 	ns := "default"
 
 	// Create
-	ver, err := s.PutDomain(ctx, ns, sampleDomain("api"), "create", "test")
+	ver, err := s.PutDomain(ctx, ns, sampleDomain("api"), "create", "test", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 
 	// Get
-	d, err := s.GetDomain(ctx, ns, "api")
+	d, rv, err := s.GetDomain(ctx, ns, "api")
 	require.NoError(t, err)
 	require.NotNil(t, d)
 	assert.Equal(t, "api", d.Name)
 	assert.Equal(t, []string{"api.example.com"}, d.Hosts)
+	assert.Equal(t, int64(1), rv)
 
 	// List
 	domains, err := s.ListDomains(ctx, ns)
 	require.NoError(t, err)
 	assert.Len(t, domains, 1)
 
-	// Update
+	// Update (with OCC)
 	updated := sampleDomain("api")
 	updated.Hosts = []string{"api-v2.example.com"}
-	ver2, err := s.PutDomain(ctx, ns, updated, "update", "test")
+	ver2, err := s.PutDomain(ctx, ns, updated, "update", "test", rv)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), ver2)
 
-	d2, _ := s.GetDomain(ctx, ns, "api")
+	d2, rv2, _ := s.GetDomain(ctx, ns, "api")
 	assert.Equal(t, []string{"api-v2.example.com"}, d2.Hosts)
+	assert.Equal(t, int64(2), rv2)
 
 	// Delete
 	ver3, err := s.DeleteDomain(ctx, ns, "api", "test")
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver3)
 
-	d3, err := s.GetDomain(ctx, ns, "api")
+	d3, _, err := s.GetDomain(ctx, ns, "api")
 	require.NoError(t, err)
 	assert.Nil(t, d3)
 }
@@ -141,15 +143,16 @@ func TestClusterCRUD(t *testing.T) {
 
 	ns := "default"
 
-	ver, err := s.PutCluster(ctx, ns, sampleCluster("backend"), "create", "test")
+	ver, err := s.PutCluster(ctx, ns, sampleCluster("backend"), "create", "test", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 
-	c, err := s.GetCluster(ctx, ns, "backend")
+	c, rv, err := s.GetCluster(ctx, ns, "backend")
 	require.NoError(t, err)
 	require.NotNil(t, c)
 	assert.Equal(t, "backend", c.Name)
 	assert.Equal(t, "roundrobin", c.LBType)
+	assert.Equal(t, int64(1), rv)
 
 	clusters, err := s.ListClusters(ctx, ns)
 	require.NoError(t, err)
@@ -158,7 +161,7 @@ func TestClusterCRUD(t *testing.T) {
 	// Delete
 	_, err = s.DeleteCluster(ctx, ns, "backend", "test")
 	require.NoError(t, err)
-	c2, _ := s.GetCluster(ctx, ns, "backend")
+	c2, _, _ := s.GetCluster(ctx, ns, "backend")
 	assert.Nil(t, c2)
 }
 
@@ -172,11 +175,11 @@ func TestDomainHistory(t *testing.T) {
 
 	// Create v1
 	d := sampleDomain("hist")
-	s.PutDomain(ctx, ns, d, "create", "alice")
+	s.PutDomain(ctx, ns, d, "create", "alice", 0)
 
 	// Update v2
 	d.Hosts = []string{"hist-v2.example.com"}
-	s.PutDomain(ctx, ns, d, "update", "bob")
+	s.PutDomain(ctx, ns, d, "update", "bob", 1)
 
 	// Get history
 	history, err := s.GetDomainHistory(ctx, ns, "hist")
@@ -199,7 +202,7 @@ func TestDomainHistory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver) // v3 is the rollback
 
-	d2, _ := s.GetDomain(ctx, ns, "hist")
+	d2, _, _ := s.GetDomain(ctx, ns, "hist")
 	assert.Equal(t, "hist.example.com", d2.Hosts[0])
 }
 
@@ -210,10 +213,10 @@ func TestClusterHistory(t *testing.T) {
 
 	ns := "default"
 	c := sampleCluster("hist-cluster")
-	s.PutCluster(ctx, ns, c, "create", "alice")
+	s.PutCluster(ctx, ns, c, "create", "alice", 0)
 
 	c.LBType = "random"
-	s.PutCluster(ctx, ns, c, "update", "bob")
+	s.PutCluster(ctx, ns, c, "update", "bob", 1)
 
 	history, err := s.GetClusterHistory(ctx, ns, "hist-cluster")
 	require.NoError(t, err)
@@ -224,8 +227,119 @@ func TestClusterHistory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver)
 
-	c2, _ := s.GetCluster(ctx, ns, "hist-cluster")
+	c2, _, _ := s.GetCluster(ctx, ns, "hist-cluster")
 	assert.Equal(t, "roundrobin", c2.LBType)
+}
+
+// OCC (Optimistic Concurrency Control) Tests
+func TestDomainOCC_CreateConflict(t *testing.T) {
+	ctx := context.Background()
+	s, cleanup := startPostgres(t, ctx)
+	defer cleanup()
+
+	ns := "default"
+
+	// First create succeeds
+	ver, err := s.PutDomain(ctx, ns, sampleDomain("occ"), "create", "alice", 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), ver)
+
+	// Second create with expectedVersion=0 should conflict
+	_, err = s.PutDomain(ctx, ns, sampleDomain("occ"), "create", "bob", 0)
+	assert.ErrorIs(t, err, ErrConflict)
+}
+
+func TestDomainOCC_UpdateStaleVersion(t *testing.T) {
+	ctx := context.Background()
+	s, cleanup := startPostgres(t, ctx)
+	defer cleanup()
+
+	ns := "default"
+
+	// Create
+	s.PutDomain(ctx, ns, sampleDomain("occ2"), "create", "alice", 0)
+
+	// Alice reads rv=1
+	_, rv1, _ := s.GetDomain(ctx, ns, "occ2")
+	assert.Equal(t, int64(1), rv1)
+
+	// Bob updates with rv=1 → succeeds
+	d := sampleDomain("occ2")
+	d.Hosts = []string{"bob.example.com"}
+	_, err := s.PutDomain(ctx, ns, d, "update", "bob", rv1)
+	require.NoError(t, err)
+
+	// Alice tries to update with stale rv=1 → conflict
+	d2 := sampleDomain("occ2")
+	d2.Hosts = []string{"alice.example.com"}
+	_, err = s.PutDomain(ctx, ns, d2, "update", "alice", rv1)
+	assert.ErrorIs(t, err, ErrConflict)
+
+	// Verify Bob's update persisted
+	got, rv2, _ := s.GetDomain(ctx, ns, "occ2")
+	assert.Equal(t, []string{"bob.example.com"}, got.Hosts)
+	assert.Equal(t, int64(2), rv2)
+}
+
+func TestDomainOCC_BypassMode(t *testing.T) {
+	ctx := context.Background()
+	s, cleanup := startPostgres(t, ctx)
+	defer cleanup()
+
+	ns := "default"
+
+	// Create with bypass (-1)
+	_, err := s.PutDomain(ctx, ns, sampleDomain("bypass"), "create", "test", -1)
+	require.NoError(t, err)
+
+	// Update with bypass (-1) regardless of version
+	d := sampleDomain("bypass")
+	d.Hosts = []string{"bypass-v2.example.com"}
+	_, err = s.PutDomain(ctx, ns, d, "update", "test", -1)
+	require.NoError(t, err)
+
+	got, _, _ := s.GetDomain(ctx, ns, "bypass")
+	assert.Equal(t, []string{"bypass-v2.example.com"}, got.Hosts)
+}
+
+func TestClusterOCC_CreateConflict(t *testing.T) {
+	ctx := context.Background()
+	s, cleanup := startPostgres(t, ctx)
+	defer cleanup()
+
+	ns := "default"
+
+	_, err := s.PutCluster(ctx, ns, sampleCluster("occ-c"), "create", "alice", 0)
+	require.NoError(t, err)
+
+	_, err = s.PutCluster(ctx, ns, sampleCluster("occ-c"), "create", "bob", 0)
+	assert.ErrorIs(t, err, ErrConflict)
+}
+
+func TestClusterOCC_UpdateStaleVersion(t *testing.T) {
+	ctx := context.Background()
+	s, cleanup := startPostgres(t, ctx)
+	defer cleanup()
+
+	ns := "default"
+
+	s.PutCluster(ctx, ns, sampleCluster("occ-c2"), "create", "alice", 0)
+	_, rv1, _ := s.GetCluster(ctx, ns, "occ-c2")
+
+	// Bob updates
+	c := sampleCluster("occ-c2")
+	c.LBType = "random"
+	_, err := s.PutCluster(ctx, ns, c, "update", "bob", rv1)
+	require.NoError(t, err)
+
+	// Alice tries stale version
+	c2 := sampleCluster("occ-c2")
+	c2.LBType = "least_request"
+	_, err = s.PutCluster(ctx, ns, c2, "update", "alice", rv1)
+	assert.ErrorIs(t, err, ErrConflict)
+
+	got, _, _ := s.GetCluster(ctx, ns, "occ-c2")
+	assert.Equal(t, "random", got.LBType)
 }
 
 // Watch & Revision Tests
@@ -242,8 +356,8 @@ func TestWatchFrom(t *testing.T) {
 	assert.Equal(t, int64(0), rev)
 
 	// Create some data
-	s.PutDomain(ctx, ns, sampleDomain("watch1"), "create", "test")
-	s.PutCluster(ctx, ns, sampleCluster("watch-c1"), "create", "test")
+	s.PutDomain(ctx, ns, sampleDomain("watch1"), "create", "test", 0)
+	s.PutCluster(ctx, ns, sampleCluster("watch-c1"), "create", "test", 0)
 
 	// Watch from 0
 	events, maxRev, err := s.WatchFrom(ctx, ns, 0)
@@ -257,7 +371,7 @@ func TestWatchFrom(t *testing.T) {
 	assert.Empty(t, events2)
 
 	// One more change
-	s.PutDomain(ctx, ns, sampleDomain("watch2"), "create", "test")
+	s.PutDomain(ctx, ns, sampleDomain("watch2"), "create", "test", 0)
 	events3, _, err := s.WatchFrom(ctx, ns, maxRev)
 	require.NoError(t, err)
 	assert.Len(t, events3, 1)
@@ -285,8 +399,8 @@ func TestNamespaces(t *testing.T) {
 	assert.Contains(t, nsList, "production")
 
 	// Namespace isolation: data in one ns doesn't appear in another
-	s.PutDomain(ctx, "default", sampleDomain("d1"), "create", "test")
-	s.PutDomain(ctx, "production", sampleDomain("d2"), "create", "test")
+	s.PutDomain(ctx, "default", sampleDomain("d1"), "create", "test", 0)
+	s.PutDomain(ctx, "production", sampleDomain("d2"), "create", "test", 0)
 
 	defaultDomains, _ := s.ListDomains(ctx, "default")
 	prodDomains, _ := s.ListDomains(ctx, "production")
@@ -305,8 +419,8 @@ func TestPutAllConfig(t *testing.T) {
 	ns := "default"
 
 	// Pre-populate
-	s.PutDomain(ctx, ns, sampleDomain("old"), "create", "test")
-	s.PutCluster(ctx, ns, sampleCluster("old-c"), "create", "test")
+	s.PutDomain(ctx, ns, sampleDomain("old"), "create", "test", 0)
+	s.PutCluster(ctx, ns, sampleCluster("old-c"), "create", "test", 0)
 
 	// Replace all
 	newDomains := []model.DomainConfig{*sampleDomain("new1"), *sampleDomain("new2")}
@@ -315,9 +429,9 @@ func TestPutAllConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Old data should be gone
-	d, _ := s.GetDomain(ctx, ns, "old")
+	d, _, _ := s.GetDomain(ctx, ns, "old")
 	assert.Nil(t, d)
-	c, _ := s.GetCluster(ctx, ns, "old-c")
+	c, _, _ := s.GetCluster(ctx, ns, "old-c")
 	assert.Nil(t, c)
 
 	// New data should exist
@@ -335,8 +449,8 @@ func TestAuditLog(t *testing.T) {
 
 	ns := "default"
 
-	s.PutDomain(ctx, ns, sampleDomain("audit1"), "create", "alice")
-	s.PutDomain(ctx, ns, sampleDomain("audit2"), "create", "bob")
+	s.PutDomain(ctx, ns, sampleDomain("audit1"), "create", "alice", 0)
+	s.PutDomain(ctx, ns, sampleDomain("audit2"), "create", "bob", 0)
 	s.DeleteDomain(ctx, ns, "audit1", "charlie")
 
 	entries, total, err := s.ListAuditLog(ctx, ns, 50, 0)

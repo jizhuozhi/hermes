@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -33,7 +34,7 @@ func (h *DomainHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 func (h *DomainHandler) GetDomain(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")
-	domain, err := h.store.GetDomain(r.Context(), ns, name)
+	domain, rv, err := h.store.GetDomain(r.Context(), ns, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -42,7 +43,7 @@ func (h *DomainHandler) GetDomain(w http.ResponseWriter, r *http.Request) {
 		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("domain %q not found", name))
 		return
 	}
-	JSON(w, http.StatusOK, domain)
+	JSON(w, http.StatusOK, map[string]any{"domain": domain, "resource_version": rv})
 }
 
 func (h *DomainHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
@@ -63,61 +64,57 @@ func (h *DomainHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := h.store.GetDomain(r.Context(), ns, domain.Name)
+	ver, err := h.store.PutDomain(r.Context(), ns, &domain, "create", Operator(r), 0)
 	if err != nil {
-		ErrJSON(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if existing != nil {
-		ErrJSON(w, http.StatusConflict, fmt.Sprintf("domain %q already exists", domain.Name))
-		return
-	}
-
-	ver, err := h.store.PutDomain(r.Context(), ns, &domain, "create", Operator(r))
-	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			ErrJSON(w, http.StatusConflict, fmt.Sprintf("domain %q already exists", domain.Name))
+			return
+		}
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.logger.Infof("domain created: %s (ns=%s), version=%d", domain.Name, ns, ver)
-	JSON(w, http.StatusCreated, map[string]any{"version": ver, "domain": domain})
+	JSON(w, http.StatusCreated, map[string]any{"version": ver, "domain": domain, "resource_version": int64(1)})
 }
 
 func (h *DomainHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")
 
-	var domain model.DomainConfig
-	if err := DecodeJSON(r, &domain); err != nil {
+	var body struct {
+		model.DomainConfig
+		ResourceVersion int64 `json:"resource_version"`
+	}
+	if err := DecodeJSON(r, &body); err != nil {
 		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
 		return
 	}
 
-	existing, err := h.store.GetDomain(r.Context(), ns, name)
-	if err != nil {
-		ErrJSON(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if existing == nil {
-		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("domain %q not found", name))
+	if body.ResourceVersion <= 0 {
+		ErrJSON(w, http.StatusBadRequest, "resource_version is required for update (must be > 0)")
 		return
 	}
 
-	domain.Name = name
+	body.DomainConfig.Name = name
 
-	if errs := model.ValidateDomain(&domain, nil); len(errs) > 0 {
+	if errs := model.ValidateDomain(&body.DomainConfig, nil); len(errs) > 0 {
 		JSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
 		return
 	}
 
-	ver, err := h.store.PutDomain(r.Context(), ns, &domain, "update", Operator(r))
+	ver, err := h.store.PutDomain(r.Context(), ns, &body.DomainConfig, "update", Operator(r), body.ResourceVersion)
 	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			ErrJSON(w, http.StatusConflict, "conflict: the domain has been modified by another user, please refresh and try again")
+			return
+		}
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.logger.Infof("domain updated: %s (ns=%s), version=%d", name, ns, ver)
-	JSON(w, http.StatusOK, map[string]any{"version": ver, "domain": domain})
+	JSON(w, http.StatusOK, map[string]any{"version": ver, "domain": body.DomainConfig, "resource_version": body.ResourceVersion + 1})
 }
 
 func (h *DomainHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {

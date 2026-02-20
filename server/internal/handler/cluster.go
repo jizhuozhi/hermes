@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -33,7 +34,7 @@ func (h *ClusterHandler) ListClusters(w http.ResponseWriter, r *http.Request) {
 func (h *ClusterHandler) GetCluster(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")
-	cluster, err := h.store.GetCluster(r.Context(), ns, name)
+	cluster, rv, err := h.store.GetCluster(r.Context(), ns, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -42,7 +43,7 @@ func (h *ClusterHandler) GetCluster(w http.ResponseWriter, r *http.Request) {
 		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("cluster %q not found", name))
 		return
 	}
-	JSON(w, http.StatusOK, cluster)
+	JSON(w, http.StatusOK, map[string]any{"cluster": cluster, "resource_version": rv})
 }
 
 func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
@@ -63,61 +64,57 @@ func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := h.store.GetCluster(r.Context(), ns, cluster.Name)
+	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "create", Operator(r), 0)
 	if err != nil {
-		ErrJSON(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if existing != nil {
-		ErrJSON(w, http.StatusConflict, fmt.Sprintf("cluster %q already exists", cluster.Name))
-		return
-	}
-
-	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "create", Operator(r))
-	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			ErrJSON(w, http.StatusConflict, fmt.Sprintf("cluster %q already exists", cluster.Name))
+			return
+		}
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.logger.Infof("cluster created: %s (ns=%s), version=%d", cluster.Name, ns, ver)
-	JSON(w, http.StatusCreated, map[string]any{"version": ver, "cluster": cluster})
+	JSON(w, http.StatusCreated, map[string]any{"version": ver, "cluster": cluster, "resource_version": int64(1)})
 }
 
 func (h *ClusterHandler) UpdateCluster(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")
 
-	var cluster model.ClusterConfig
-	if err := DecodeJSON(r, &cluster); err != nil {
+	var body struct {
+		model.ClusterConfig
+		ResourceVersion int64 `json:"resource_version"`
+	}
+	if err := DecodeJSON(r, &body); err != nil {
 		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
 		return
 	}
 
-	existing, err := h.store.GetCluster(r.Context(), ns, name)
-	if err != nil {
-		ErrJSON(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if existing == nil {
-		ErrJSON(w, http.StatusNotFound, fmt.Sprintf("cluster %q not found", name))
+	if body.ResourceVersion <= 0 {
+		ErrJSON(w, http.StatusBadRequest, "resource_version is required for update (must be > 0)")
 		return
 	}
 
-	cluster.Name = name
+	body.ClusterConfig.Name = name
 
-	if errs := model.ValidateCluster(&cluster); len(errs) > 0 {
+	if errs := model.ValidateCluster(&body.ClusterConfig); len(errs) > 0 {
 		JSON(w, http.StatusBadRequest, map[string]any{"errors": errs})
 		return
 	}
 
-	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "update", Operator(r))
+	ver, err := h.store.PutCluster(r.Context(), ns, &body.ClusterConfig, "update", Operator(r), body.ResourceVersion)
 	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			ErrJSON(w, http.StatusConflict, "conflict: the cluster has been modified by another user, please refresh and try again")
+			return
+		}
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.logger.Infof("cluster updated: %s (ns=%s), version=%d", name, ns, ver)
-	JSON(w, http.StatusOK, map[string]any{"version": ver, "cluster": cluster})
+	JSON(w, http.StatusOK, map[string]any{"version": ver, "cluster": body.ClusterConfig, "resource_version": body.ResourceVersion + 1})
 }
 
 func (h *ClusterHandler) DeleteCluster(w http.ResponseWriter, r *http.Request) {

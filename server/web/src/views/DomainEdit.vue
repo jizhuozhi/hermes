@@ -313,6 +313,7 @@ export default {
     return {
       mode: 'form',
       domain: { name: '', hosts: [''], routes: [] },
+      resourceVersion: 0,
       availableClusters: [],
       allMethods: ALL_METHODS,
       isEdit: false,
@@ -341,7 +342,8 @@ export default {
       this.isDefaultDomain = name === '_default'
       try {
         const res = await api.getDomain(name)
-        this.domain = res.data
+        this.domain = res.data.domain
+        this.resourceVersion = res.data.resource_version || 0
         this.hydrateDomain()
       } catch (e) {
         this.error = e.response?.data?.error || e.message
@@ -465,14 +467,18 @@ export default {
       }
       try {
         if (this.isEdit) {
-          await api.updateDomain(this.domainName, parsed)
+          parsed.resource_version = this.resourceVersion
+          const res = await api.updateDomain(this.domainName, parsed)
+          this.resourceVersion = res.data.resource_version || this.resourceVersion
         } else {
           await api.createDomain(parsed)
         }
         this.$router.push('/domains')
       } catch (e) {
         const data = e.response?.data
-        if (data?.errors) {
+        if (e.response?.status === 409) {
+          this.error = data?.error || 'Conflict: this domain has been modified by another user. Please refresh and try again.'
+        } else if (data?.errors) {
           this.validationErrors = data.errors
         } else {
           this.error = data?.error || e.message
@@ -523,14 +529,18 @@ export default {
 
       try {
         if (this.isEdit) {
-          await api.updateDomain(this.domainName, payload)
+          payload.resource_version = this.resourceVersion
+          const res = await api.updateDomain(this.domainName, payload)
+          this.resourceVersion = res.data.resource_version || this.resourceVersion
         } else {
           await api.createDomain(payload)
         }
         this.$router.push('/domains')
       } catch (e) {
         const data = e.response?.data
-        if (data?.errors) {
+        if (e.response?.status === 409) {
+          this.error = data?.error || 'Conflict: this domain has been modified by another user. Please refresh and try again.'
+        } else if (data?.errors) {
           this.validationErrors = data.errors
         } else {
           this.error = data?.error || e.message

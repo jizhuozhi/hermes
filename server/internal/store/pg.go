@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS domains (
     namespace  TEXT NOT NULL DEFAULT 'default',
     name       TEXT NOT NULL,
     config     JSONB NOT NULL,
+    resource_version BIGINT NOT NULL DEFAULT 1,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (namespace, name)
 );
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS clusters (
     namespace  TEXT NOT NULL DEFAULT 'default',
     name       TEXT NOT NULL,
     config     JSONB NOT NULL,
+    resource_version BIGINT NOT NULL DEFAULT 1,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (namespace, name)
 );
@@ -228,23 +230,24 @@ func (s *PgStore) ListDomains(ctx context.Context, ns string) ([]model.DomainCon
 	return domains, rows.Err()
 }
 
-func (s *PgStore) GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, error) {
+func (s *PgStore) GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, int64, error) {
 	var data []byte
-	err := s.db.QueryRowContext(ctx, `SELECT config FROM domains WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data)
+	var rv int64
+	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM domains WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data, &rv)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("pg get domain: %w", err)
+		return nil, 0, fmt.Errorf("pg get domain: %w", err)
 	}
 	var d model.DomainConfig
 	if err := json.Unmarshal(data, &d); err != nil {
-		return nil, fmt.Errorf("unmarshal domain: %w", err)
+		return nil, 0, fmt.Errorf("unmarshal domain: %w", err)
 	}
-	return &d, nil
+	return &d, rv, nil
 }
 
-func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string) (int64, error) {
+func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error) {
 	data, err := json.Marshal(domain)
 	if err != nil {
 		return 0, fmt.Errorf("marshal domain: %w", err)
@@ -256,12 +259,47 @@ func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.Domain
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO domains (namespace, name, config, updated_at) VALUES ($1, $2, $3, NOW())
-		 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, updated_at = NOW()`,
-		ns, domain.Name, data)
-	if err != nil {
-		return 0, fmt.Errorf("pg upsert domain: %w", err)
+	// Optimistic concurrency control.
+	// expectedVersion == 0 means "create" — the row must NOT exist.
+	// expectedVersion == -1 means "bypass OCC" (used by rollback/import).
+	// expectedVersion > 0 means "update" — the current resource_version must match.
+	if expectedVersion == 0 {
+		// Create: INSERT ... ON CONFLICT DO NOTHING, then check affected rows.
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO domains (namespace, name, config, resource_version, updated_at)
+			 VALUES ($1, $2, $3, 1, NOW())
+			 ON CONFLICT (namespace, name) DO NOTHING`,
+			ns, domain.Name, data)
+		if err != nil {
+			return 0, fmt.Errorf("pg insert domain: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return 0, ErrConflict
+		}
+	} else if expectedVersion > 0 {
+		// Update with OCC: only update if resource_version matches.
+		res, err := tx.ExecContext(ctx,
+			`UPDATE domains SET config = $3, resource_version = resource_version + 1, updated_at = NOW()
+			 WHERE namespace = $1 AND name = $2 AND resource_version = $4`,
+			ns, domain.Name, data, expectedVersion)
+		if err != nil {
+			return 0, fmt.Errorf("pg update domain: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return 0, ErrConflict
+		}
+	} else {
+		// Bypass OCC (expectedVersion == -1): unconditional upsert.
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO domains (namespace, name, config, resource_version, updated_at)
+			 VALUES ($1, $2, $3, 1, NOW())
+			 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, resource_version = domains.resource_version + 1, updated_at = NOW()`,
+			ns, domain.Name, data)
+		if err != nil {
+			return 0, fmt.Errorf("pg upsert domain: %w", err)
+		}
 	}
 
 	version, err := s.nextVersion(ctx, tx, ns, "domain", domain.Name)
@@ -366,23 +404,24 @@ func (s *PgStore) ListClusters(ctx context.Context, ns string) ([]model.ClusterC
 	return clusters, rows.Err()
 }
 
-func (s *PgStore) GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, error) {
+func (s *PgStore) GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, int64, error) {
 	var data []byte
-	err := s.db.QueryRowContext(ctx, `SELECT config FROM clusters WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data)
+	var rv int64
+	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM clusters WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data, &rv)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("pg get cluster: %w", err)
+		return nil, 0, fmt.Errorf("pg get cluster: %w", err)
 	}
 	var c model.ClusterConfig
 	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("unmarshal cluster: %w", err)
+		return nil, 0, fmt.Errorf("unmarshal cluster: %w", err)
 	}
-	return &c, nil
+	return &c, rv, nil
 }
 
-func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string) (int64, error) {
+func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error) {
 	data, err := json.Marshal(cluster)
 	if err != nil {
 		return 0, fmt.Errorf("marshal cluster: %w", err)
@@ -394,12 +433,41 @@ func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.Clus
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO clusters (namespace, name, config, updated_at) VALUES ($1, $2, $3, NOW())
-		 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, updated_at = NOW()`,
-		ns, cluster.Name, data)
-	if err != nil {
-		return 0, fmt.Errorf("pg upsert cluster: %w", err)
+	// Optimistic concurrency control (same semantics as PutDomain).
+	if expectedVersion == 0 {
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO clusters (namespace, name, config, resource_version, updated_at)
+			 VALUES ($1, $2, $3, 1, NOW())
+			 ON CONFLICT (namespace, name) DO NOTHING`,
+			ns, cluster.Name, data)
+		if err != nil {
+			return 0, fmt.Errorf("pg insert cluster: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return 0, ErrConflict
+		}
+	} else if expectedVersion > 0 {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE clusters SET config = $3, resource_version = resource_version + 1, updated_at = NOW()
+			 WHERE namespace = $1 AND name = $2 AND resource_version = $4`,
+			ns, cluster.Name, data, expectedVersion)
+		if err != nil {
+			return 0, fmt.Errorf("pg update cluster: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return 0, ErrConflict
+		}
+	} else {
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO clusters (namespace, name, config, resource_version, updated_at)
+			 VALUES ($1, $2, $3, 1, NOW())
+			 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, resource_version = clusters.resource_version + 1, updated_at = NOW()`,
+			ns, cluster.Name, data)
+		if err != nil {
+			return 0, fmt.Errorf("pg upsert cluster: %w", err)
+		}
 	}
 
 	version, err := s.nextVersion(ctx, tx, ns, "cluster", cluster.Name)
@@ -598,7 +666,7 @@ func (s *PgStore) RollbackDomain(ctx context.Context, ns, name string, version i
 	if entry.Domain == nil {
 		return 0, fmt.Errorf("domain %q version %d is a delete entry, cannot rollback", name, version)
 	}
-	return s.PutDomain(ctx, ns, entry.Domain, "rollback", operator)
+	return s.PutDomain(ctx, ns, entry.Domain, "rollback", operator, -1)
 }
 
 // Per-cluster History
@@ -621,7 +689,7 @@ func (s *PgStore) RollbackCluster(ctx context.Context, ns, name string, version 
 	if entry.Cluster == nil {
 		return 0, fmt.Errorf("cluster %q version %d is a delete entry, cannot rollback", name, version)
 	}
-	return s.PutCluster(ctx, ns, entry.Cluster, "rollback", operator)
+	return s.PutCluster(ctx, ns, entry.Cluster, "rollback", operator, -1)
 }
 
 // Watch (long-poll for controller)
