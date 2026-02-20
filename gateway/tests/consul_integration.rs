@@ -93,8 +93,7 @@ fn sample_registration(id: &str, name: &str, port: u16) -> TestServiceRegistrati
     }
 }
 
-// ── Tests ───────────────────────────────────────────
-
+// Tests
 #[tokio::test]
 async fn test_consul_register_and_query() {
     let (client, _base_url, _container) = start_consul().await;

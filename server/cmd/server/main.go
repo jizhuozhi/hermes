@@ -77,8 +77,7 @@ func main() {
 		sugar.Info("Authentication disabled (no auth_mode configured)")
 	}
 
-	// ── Middleware factories ──────────────────────────
-
+	// Middleware factories
 	nsMW := handler.NamespaceMiddleware
 	authMW := handler.Authenticate(pgStore, oidcVerifier, sugar)
 
@@ -99,7 +98,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// ── Public: Auth API (no authentication required) ─────────────
+	// Public: Auth API (no authentication required)
 	mux.HandleFunc("GET /api/auth/config", func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{"enabled": false}
 		switch cfg.AuthMode {
@@ -125,12 +124,12 @@ func main() {
 		mux.Handle("POST /api/auth/rotate-key", handler.Wrap(http.HandlerFunc(builtinHandler.RotateKey), authMW, adminUsers))
 	}
 
-	// ── Scopes reference (public) ────────────────────────────────
+	// Scopes reference (public)
 	mux.HandleFunc("GET /api/v1/scopes", func(w http.ResponseWriter, r *http.Request) {
 		handler.JSON(w, http.StatusOK, map[string]any{"scopes": store.AllScopes})
 	})
 
-	// ── Authenticated API: unified /api/v1/ ──────────────────────
+	// Authenticated API: unified /api/v1/
 	// All endpoints below require authentication (OIDC Bearer or HMAC-SHA256).
 	// Authorization is scope-based: each endpoint checks RequireScope.
 
@@ -250,7 +249,7 @@ func main() {
 		handler.JSON(w, http.StatusCreated, map[string]any{"name": req.Name})
 	}), authMW, nsWrite))
 
-	// ── Static frontend SPA ──────────────────────────
+	// Static frontend SPA
 	distDir := "./web/dist"
 	if _, err := os.Stat(distDir); err == nil {
 		staticFS := http.FileServer(http.Dir(distDir))
@@ -263,7 +262,7 @@ func main() {
 		})
 	}
 
-	// ── Global middleware: Recovery → CORS ────────────
+	// Global middleware: Recovery → CORS
 	var h http.Handler = mux
 	h = handler.CORS(h)
 	h = handler.Recovery(sugar, h)
@@ -286,7 +285,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// ── Stale instance/controller reaper ─────────
+	// Stale instance/controller reaper
 	// Periodically marks instances and controllers as "offline" if they haven't
 	// reported within the threshold. Idempotent UPDATE — safe to run on every replica.
 	go func() {

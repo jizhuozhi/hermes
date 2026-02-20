@@ -134,8 +134,7 @@ func (h *ClusterHandler) DeleteCluster(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"version": ver})
 }
 
-// ── Per-cluster history & rollback ───────────────
-
+// Per-cluster history & rollback
 func (h *ClusterHandler) ListClusterHistory(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")

@@ -134,8 +134,7 @@ func (h *DomainHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"version": ver})
 }
 
-// ── Per-domain history & rollback ────────────────
-
+// Per-domain history & rollback
 func (h *DomainHandler) ListDomainHistory(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
 	name := r.PathValue("name")

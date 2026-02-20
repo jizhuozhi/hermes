@@ -2,8 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api/v1' })
 
-// ─── Namespace ───────────────────────────────────────────────────────
-
+// Namespace
 let currentNamespace = localStorage.getItem('hermes_namespace') || 'default'
 
 export function setNamespace(ns) {
@@ -15,8 +14,7 @@ export function getNamespace() {
   return currentNamespace
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────
-
+// Auth
 let _authConfig = null
 
 export async function getAuthConfig() {
@@ -163,8 +161,7 @@ async function _doRefresh() {
   }
 }
 
-// ─── Interceptors ────────────────────────────────────────────────────
-
+// Interceptors
 api.interceptors.request.use(async (config) => {
   if (currentNamespace) {
     config.headers['X-Hermes-Namespace'] = currentNamespace
@@ -204,8 +201,7 @@ api.interceptors.response.use(
   }
 )
 
-// ─── API Methods ─────────────────────────────────────────────────────
-
+// API Methods
 export default {
   // Config
   getConfig: () => api.get('/config'),

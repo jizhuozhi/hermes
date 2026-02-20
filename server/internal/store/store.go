@@ -46,51 +46,51 @@ type HistoryEntry struct {
 type Store interface {
 	Close()
 
-	// ── Domain CRUD ─────────────────────────────
+	// Domain CRUD
 	ListDomains(ctx context.Context, ns string) ([]model.DomainConfig, error)
 	GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, error)
 	PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string) (int64, error)
 	DeleteDomain(ctx context.Context, ns, name, operator string) (int64, error)
 
-	// ── Cluster CRUD ───────────────────────────
+	// Cluster CRUD
 	ListClusters(ctx context.Context, ns string) ([]model.ClusterConfig, error)
 	GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, error)
 	PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string) (int64, error)
 	DeleteCluster(ctx context.Context, ns, name, operator string) (int64, error)
 
-	// ── Bulk ───────────────────────────────────
+	// Bulk
 	PutAllConfig(ctx context.Context, ns string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error)
 	GetConfig(ctx context.Context, ns string) (*model.GatewayConfig, error)
 
-	// ── Per-domain History ──────────────────────
+	// Per-domain History
 	GetDomainHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error)
 	GetDomainVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error)
 	RollbackDomain(ctx context.Context, ns, name string, version int64, operator string) (int64, error)
 
-	// ── Per-cluster History ────────────────────
+	// Per-cluster History
 	GetClusterHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error)
 	GetClusterVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error)
 	RollbackCluster(ctx context.Context, ns, name string, version int64, operator string) (int64, error)
 
-	// ── Audit log (global change event stream) ─
+	// Audit log (global change event stream)
 	ListAuditLog(ctx context.Context, ns string, limit, offset int) ([]AuditEntry, int64, error)
 	InsertAuditLog(ctx context.Context, ns, kind, name, action, operator string) error
 
-	// ── Watch (for controller long-poll) ───────
+	// Watch (for controller long-poll)
 	CurrentRevision(ctx context.Context, ns string) (int64, error)
 	WatchFrom(ctx context.Context, ns string, sinceRevision int64) ([]ChangeEvent, int64, error)
 
-	// ── Namespaces ──────────────────────────────
+	// Namespaces
 	ListNamespaces(ctx context.Context) ([]string, error)
 	CreateNamespace(ctx context.Context, name string) error
 
-	// ── Status (namespace-scoped) ──────────────────
+	// Status (namespace-scoped)
 	UpsertGatewayInstances(ctx context.Context, ns string, instances []GatewayInstanceStatus) error
 	ListGatewayInstances(ctx context.Context, ns string) ([]GatewayInstanceStatus, error)
 	UpsertControllerStatus(ctx context.Context, ns string, ctrl *ControllerStatus) error
 	GetControllerStatus(ctx context.Context, ns string) (*ControllerStatus, error)
 
-	// ── Stale instance/controller reaper ─────────
+	// Stale instance/controller reaper
 	// MarkStaleInstances marks gateway instances as "offline" if their updated_at
 	// is older than the given threshold. Returns the list of newly-offlined entries.
 	// Idempotent: multiple replicas can call concurrently without conflict.
@@ -99,19 +99,19 @@ type Store interface {
 	// is older than the given threshold. Same idempotent semantics.
 	MarkStaleControllers(ctx context.Context, threshold time.Duration) ([]StaleEntry, error)
 
-	// ── Grafana dashboards (namespace-scoped) ─────
+	// Grafana dashboards (namespace-scoped)
 	ListGrafanaDashboards(ctx context.Context, ns string) ([]GrafanaDashboard, error)
 	PutGrafanaDashboard(ctx context.Context, ns string, d *GrafanaDashboard) (*GrafanaDashboard, error)
 	DeleteGrafanaDashboard(ctx context.Context, ns string, id int64) error
 
-	// ── API Credentials (namespace-scoped) ────────
+	// API Credentials (namespace-scoped)
 	ListAPICredentials(ctx context.Context, ns string) ([]APICredential, error)
 	GetAPICredentialByAK(ctx context.Context, accessKey string) (*APICredential, error) // auth lookup is global (AK is globally unique)
 	CreateAPICredential(ctx context.Context, ns string, cred *APICredential) (*APICredential, error)
 	UpdateAPICredential(ctx context.Context, ns string, cred *APICredential) error
 	DeleteAPICredential(ctx context.Context, ns string, id int64) error
 
-	// ── Users (OIDC-synced or builtin) ─────────────────
+	// Users (OIDC-synced or builtin)
 	UpsertUser(ctx context.Context, user *User) error // INSERT sets is_admin; UPDATE preserves existing
 	GetUser(ctx context.Context, sub string) (*User, error)
 	ListUsers(ctx context.Context) ([]User, error)
@@ -125,7 +125,7 @@ type Store interface {
 	// DeleteUser removes a user by sub. Returns error if not found.
 	DeleteUser(ctx context.Context, sub string) error
 
-	// ── JWT Signing Keys (builtin auth) ─────────────
+	// JWT Signing Keys (builtin auth)
 	// GetActiveSigningKey returns the current active key for token signing.
 	// Returns nil if no active key exists.
 	GetActiveSigningKey(ctx context.Context) (*JWTSigningKey, error)
@@ -141,13 +141,13 @@ type Store interface {
 	// The old key remains valid for gracePeriod (so in-flight tokens don't break).
 	RotateSigningKey(ctx context.Context, gracePeriod time.Duration) (*JWTSigningKey, error)
 
-	// ── Namespace Members ─────────────────────────
+	// Namespace Members
 	ListNamespaceMembers(ctx context.Context, ns string) ([]NamespaceMember, error)
 	GetNamespaceMember(ctx context.Context, ns, userSub string) (*NamespaceMember, error)
 	SetNamespaceMember(ctx context.Context, ns, userSub string, role NamespaceRole) error
 	RemoveNamespaceMember(ctx context.Context, ns, userSub string) error
 
-	// ── Group Bindings (OIDC group → namespace role) ─
+	// Group Bindings (OIDC group → namespace role)
 	ListGroupBindings(ctx context.Context, ns string) ([]GroupBinding, error)
 	SetGroupBinding(ctx context.Context, ns, group string, role NamespaceRole) error
 	RemoveGroupBinding(ctx context.Context, ns, group string) error
@@ -176,8 +176,7 @@ type AuditEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// ── Status (shared across replicas) ──────────────
-
+// Status (shared across replicas)
 // GatewayInstanceStatus is the status of a single gateway instance.
 type GatewayInstanceStatus struct {
 	ID              string    `json:"id"`
@@ -206,8 +205,7 @@ type StaleEntry struct {
 	ID        string `json:"id"`
 }
 
-// ── Settings (shared across replicas) ────────────
-
+// Settings (shared across replicas)
 // GrafanaDashboard is a persisted Grafana dashboard configuration.
 type GrafanaDashboard struct {
 	ID   int64  `json:"id"`
@@ -215,7 +213,7 @@ type GrafanaDashboard struct {
 	URL  string `json:"url"`
 }
 
-// ── API Credentials (AK/SK for service-to-service auth) ─
+// API Credentials (AK/SK for service-to-service auth)
 
 // Scope constants define fine-grained permissions for API credentials.
 const (
@@ -317,8 +315,7 @@ func (c *APICredential) HasScope(scope string) bool {
 	return false
 }
 
-// ── JWT Signing Keys (builtin auth) ──────────────
-
+// JWT Signing Keys (builtin auth)
 // JWTSigningKey represents a persistent HMAC-SHA256 signing key for builtin auth.
 // Keys have a lifecycle: active → retired → expired (deleted by reaper).
 type JWTSigningKey struct {
@@ -329,8 +326,7 @@ type JWTSigningKey struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // nil for active key; set when retired
 }
 
-// ── Users (synced from OIDC) ─────────────────────
-
+// Users (synced from OIDC)
 // User represents a user synced from the OIDC provider.
 type User struct {
 	Sub                string    `json:"sub"`

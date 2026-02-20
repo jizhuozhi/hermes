@@ -389,7 +389,7 @@ export default {
         // revert
       }
     },
-    // ── Create builtin user ──
+    // Create builtin user
     async createUser() {
       this.createUserError = ''
       this.createUserSuccess = ''
@@ -403,7 +403,7 @@ export default {
         this.createUserError = e.response?.data?.error || 'Failed to create user'
       }
     },
-    // ── Edit user ──
+    // Edit user
     startEdit(u) {
       this.editingUser = u.sub
       this.editForm.name = u.name || ''
@@ -423,7 +423,7 @@ export default {
         this.userActionError = e.response?.data?.error || 'Failed to update user'
       }
     },
-    // ── Reset password ──
+    // Reset password
     promptResetPassword(u) {
       this.resetPasswordTarget = u
       this.resetPasswordValue = ''
@@ -443,7 +443,7 @@ export default {
         this.resetPasswordError = e.response?.data?.error || 'Failed to reset password'
       }
     },
-    // ── Force password change ──
+    // Force password change
     async forcePasswordChange(u) {
       this.userActionError = ''
       const newVal = !u.must_change_password
@@ -454,7 +454,7 @@ export default {
         this.userActionError = e.response?.data?.error || 'Failed to update force-change flag'
       }
     },
-    // ── Delete user ──
+    // Delete user
     async deleteUser(u) {
       if (!confirm(`Delete user "${u.email || u.username}"? This cannot be undone.`)) return
       this.userActionError = ''

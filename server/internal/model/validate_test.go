@@ -7,8 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ── ValidateDomain Tests ──────────────────────────
-
+// ValidateDomain Tests
 func TestValidateDomain_Valid(t *testing.T) {
 	d := &DomainConfig{
 		Name:  "api",
@@ -57,8 +56,7 @@ func TestValidateDomain_EmptyHost(t *testing.T) {
 	assert.Contains(t, errs[0].Message, "empty host")
 }
 
-// ── ValidateRoutes Tests ──────────────────────────
-
+// ValidateRoutes Tests
 func TestValidateRoutes_MissingRouteName(t *testing.T) {
 	routes := []RouteConfig{
 		{URI: "/api", Clusters: []WeightedCluster{{Name: "c", Weight: 1}}},
@@ -237,8 +235,7 @@ func TestValidateRoutes_InvalidStatus(t *testing.T) {
 	assert.Contains(t, errs[0].Message, "0 or 1")
 }
 
-// ── ValidateCluster Tests ─────────────────────────
-
+// ValidateCluster Tests
 func TestValidateCluster_Valid(t *testing.T) {
 	c := &ClusterConfig{
 		Name:   "backend",
@@ -312,8 +309,7 @@ func TestValidateCluster_InvalidTimeout(t *testing.T) {
 	assert.Contains(t, errs[0].Message, "> 0")
 }
 
-// ── ValidateClusters Tests ────────────────────────
-
+// ValidateClusters Tests
 func TestValidateClusters_DuplicateName(t *testing.T) {
 	clusters := []ClusterConfig{
 		{Name: "c1", LBType: "roundrobin", Timeout: TimeoutConfig{Connect: 1, Read: 1}, Nodes: []UpstreamNode{{Host: "h", Port: 80, Weight: 1}}},
@@ -324,8 +320,7 @@ func TestValidateClusters_DuplicateName(t *testing.T) {
 	assert.Contains(t, errs[0].Message, "duplicate")
 }
 
-// ── ValidateConfig Tests ──────────────────────────
-
+// ValidateConfig Tests
 func TestValidateConfig_CrossReference(t *testing.T) {
 	cfg := &GatewayConfig{
 		Domains: []DomainConfig{
@@ -371,8 +366,7 @@ func TestValidateConfig_Empty(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
-// ── ValidateDomains Tests ─────────────────────────
-
+// ValidateDomains Tests
 func TestValidateDomains_DuplicateName(t *testing.T) {
 	domains := []DomainConfig{
 		{Name: "api", Hosts: []string{"a.com"}, Routes: []RouteConfig{{Name: "r1", URI: "/", Clusters: []WeightedCluster{{Name: "c", Weight: 1}}}}},
@@ -383,8 +377,7 @@ func TestValidateDomains_DuplicateName(t *testing.T) {
 	assert.Contains(t, errs[0].Message, "duplicate")
 }
 
-// ── New Rate Limit Validation Tests ───────────────
-
+// New Rate Limit Validation Tests
 func TestValidateRoutes_RateLimitBurstNegative(t *testing.T) {
 	rate := 10.0
 	burst := -1
@@ -476,8 +469,7 @@ func TestValidateRoutes_RateLimitRejectedCodeZeroIsOK(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
-// ── New Cluster Validation Tests ──────────────────
-
+// New Cluster Validation Tests
 func TestValidateCluster_InvalidScheme(t *testing.T) {
 	c := &ClusterConfig{
 		Name:    "backend",

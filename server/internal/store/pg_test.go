@@ -81,8 +81,7 @@ func sampleCluster(name string) *model.ClusterConfig {
 	}
 }
 
-// ── Domain CRUD Tests ──────────────────────────
-
+// Domain CRUD Tests
 func TestDomainCRUD(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -137,8 +136,7 @@ func TestDeleteDomainNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-// ── Cluster CRUD Tests ─────────────────────────
-
+// Cluster CRUD Tests
 func TestClusterCRUD(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -167,8 +165,7 @@ func TestClusterCRUD(t *testing.T) {
 	assert.Nil(t, c2)
 }
 
-// ── History & Rollback Tests ───────────────────
-
+// History & Rollback Tests
 func TestDomainHistory(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -234,8 +231,7 @@ func TestClusterHistory(t *testing.T) {
 	assert.Equal(t, "roundrobin", c2.LBType)
 }
 
-// ── Watch & Revision Tests ─────────────────────
-
+// Watch & Revision Tests
 func TestWatchFrom(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -272,8 +268,7 @@ func TestWatchFrom(t *testing.T) {
 	assert.Equal(t, "watch2", events3[0].Name)
 }
 
-// ── Namespace Tests ────────────────────────────
-
+// Namespace Tests
 func TestNamespaces(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -304,8 +299,7 @@ func TestNamespaces(t *testing.T) {
 	assert.Equal(t, "d2", prodDomains[0].Name)
 }
 
-// ── Bulk Config Tests ──────────────────────────
-
+// Bulk Config Tests
 func TestPutAllConfig(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -336,8 +330,7 @@ func TestPutAllConfig(t *testing.T) {
 	assert.Len(t, clusters, 1)
 }
 
-// ── Audit Log Tests ────────────────────────────
-
+// Audit Log Tests
 func TestAuditLog(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -355,8 +348,7 @@ func TestAuditLog(t *testing.T) {
 	assert.True(t, len(entries) >= 3)
 }
 
-// ── API Credentials Tests ──────────────────────
-
+// API Credentials Tests
 func TestAPICredentialsCRUD(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -414,8 +406,7 @@ func TestGetAPICredentialByAK_NotFound(t *testing.T) {
 	assert.Nil(t, found)
 }
 
-// ── Gateway Status Tests ───────────────────────
-
+// Gateway Status Tests
 func TestGatewayInstanceStatus(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -467,8 +458,7 @@ func TestControllerStatus(t *testing.T) {
 	assert.Equal(t, int64(42), got.ConfigRevision)
 }
 
-// ── Grafana Dashboards Tests ───────────────────
-
+// Grafana Dashboards Tests
 func TestGrafanaDashboards(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
@@ -502,8 +492,7 @@ func TestGrafanaDashboards(t *testing.T) {
 	assert.Empty(t, dashboards2)
 }
 
-// ── Scope / Role Tests ─────────────────────────
-
+// Scope / Role Tests
 func TestValidScope(t *testing.T) {
 	assert.True(t, ValidScope(ScopeConfigRead))
 	assert.True(t, ValidScope(ScopeAdminUsers))

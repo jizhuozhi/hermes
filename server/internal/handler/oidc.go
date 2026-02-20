@@ -23,8 +23,7 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// ─── OIDC Auth Handler (login / callback / userinfo / config) ─────────
-
+// OIDC Auth Handler (login / callback / userinfo / config)
 // oidcEndpoints holds the discovered OIDC provider endpoints.
 type oidcEndpoints struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
@@ -298,8 +297,7 @@ func (h *OIDCHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, result)
 }
 
-// ─── OIDC JWT Verification (used by Authenticate middleware) ─────────
-
+// OIDC JWT Verification (used by Authenticate middleware)
 // OIDCClaims are the standard OIDC claims extracted from a verified JWT.
 type OIDCClaims struct {
 	Sub              string   `json:"sub"`
@@ -328,8 +326,7 @@ func NewOIDCVerifier(cfg config.OIDCConfig, jwksURI string) OIDCVerifyFunc {
 	}
 }
 
-// ─── JWT Verification ────────────────────────────────────────────────
-
+// JWT Verification
 func verifyJWT(tokenStr string, cache *jwksCache, expectedAudience string) (*OIDCClaims, error) {
 	parts := strings.SplitN(tokenStr, ".", 3)
 	if len(parts) != 3 {
@@ -419,8 +416,7 @@ func verifyJWT(tokenStr string, cache *jwksCache, expectedAudience string) (*OID
 	return &rawClaims.OIDCClaims, nil
 }
 
-// ─── JWKS Cache ──────────────────────────────────────────────────────
-
+// JWKS Cache
 type jwksCache struct {
 	url     string
 	mu      sync.RWMutex

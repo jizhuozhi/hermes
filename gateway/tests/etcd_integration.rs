@@ -86,8 +86,7 @@ fn sample_cluster_json(name: &str) -> String {
     .to_string()
 }
 
-// ── EtcdClient low-level tests ──────────────────────
-
+// EtcdClient low-level tests
 #[tokio::test]
 async fn test_etcd_put_and_range() {
     let (client, _cfg, _container) = start_etcd().await;
@@ -264,8 +263,7 @@ async fn test_etcd_watch_stream() {
     assert!(result.is_ok(), "watch timed out");
 }
 
-// ── Config etcd module tests (initial_load, watch_once) ─────────
-
+// Config etcd module tests (initial_load, watch_once)
 #[tokio::test]
 async fn test_initial_load_empty() {
     let (client, cfg, _container) = start_etcd().await;
@@ -446,8 +444,7 @@ async fn test_watch_once_receives_events() {
     );
 }
 
-// ── Helper function tests (b64, prefix_range_end) ───────────────
-
+// Helper function tests (b64, prefix_range_end)
 #[test]
 fn test_b64_roundtrip() {
     let original = "/hermes/domains/test-domain";

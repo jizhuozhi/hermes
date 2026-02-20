@@ -50,8 +50,7 @@ func proxyRequest(t *testing.T, proxyBase, method, path, host string, headers ma
 	return resp
 }
 
-// ── Static Node Cluster ─────────────────────────────────────────────
-
+// Static Node Cluster
 // TestE2E_Dataplane_StaticNodeProxy tests the gateway proxying to a cluster
 // with statically configured upstream nodes.
 func TestE2E_Dataplane_StaticNodeProxy(t *testing.T) {
@@ -132,8 +131,7 @@ func TestE2E_Dataplane_StaticNodeProxy(t *testing.T) {
 	r.Body.Close()
 }
 
-// ── Consul Service Discovery ────────────────────────────────────────
-
+// Consul Service Discovery
 // TestE2E_Dataplane_ConsulDiscovery tests clusters with discovery_type=consul.
 // The gateway should resolve nodes from Consul and proxy traffic to them.
 func TestE2E_Dataplane_ConsulDiscovery(t *testing.T) {
@@ -207,8 +205,7 @@ func TestE2E_Dataplane_ConsulDiscovery(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Host Matching ───────────────────────────────────────────────────
-
+// Host Matching
 // TestE2E_Dataplane_HostMatching tests exact host, wildcard suffix (*.example.com),
 // wildcard prefix (api.*), and default catch-all (_).
 func TestE2E_Dataplane_HostMatching(t *testing.T) {
@@ -297,8 +294,7 @@ func TestE2E_Dataplane_HostMatching(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Route URI Matching ──────────────────────────────────────────────
-
+// Route URI Matching
 // TestE2E_Dataplane_RouteURIMatching tests exact URI, prefix wildcard,
 // and priority ordering between routes.
 func TestE2E_Dataplane_RouteURIMatching(t *testing.T) {
@@ -398,8 +394,7 @@ func TestE2E_Dataplane_RouteURIMatching(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Header-Based Matching ───────────────────────────────────────────
-
+// Header-Based Matching
 // TestE2E_Dataplane_HeaderMatching tests routes that require specific header values.
 func TestE2E_Dataplane_HeaderMatching(t *testing.T) {
 	if testing.Short() {
@@ -483,8 +478,7 @@ func TestE2E_Dataplane_HeaderMatching(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Rate Limiting (Token Bucket) ────────────────────────────────────
-
+// Rate Limiting (Token Bucket)
 // TestE2E_Dataplane_RateLimit_TokenBucket tests rate limiting with mode=req (token bucket).
 func TestE2E_Dataplane_RateLimit_TokenBucket(t *testing.T) {
 	if testing.Short() {
@@ -556,8 +550,7 @@ func TestE2E_Dataplane_RateLimit_TokenBucket(t *testing.T) {
 	t.Logf("token bucket: %d OK, %d rate-limited out of 20", ok, limited)
 }
 
-// ── Rate Limiting (Sliding Window) ──────────────────────────────────
-
+// Rate Limiting (Sliding Window)
 // TestE2E_Dataplane_RateLimit_SlidingWindow tests rate limiting with mode=count (sliding window).
 func TestE2E_Dataplane_RateLimit_SlidingWindow(t *testing.T) {
 	if testing.Short() {
@@ -629,8 +622,7 @@ func TestE2E_Dataplane_RateLimit_SlidingWindow(t *testing.T) {
 	t.Logf("sliding window: %d OK, %d rate-limited out of 15", ok, limited)
 }
 
-// ── etcd Watch Hot-Reload ───────────────────────────────────────────
-
+// etcd Watch Hot-Reload
 // TestE2E_Dataplane_EtcdWatchHotReload tests that the gateway picks up config
 // changes from etcd dynamically without restart.
 func TestE2E_Dataplane_EtcdWatchHotReload(t *testing.T) {
@@ -721,8 +713,7 @@ func TestE2E_Dataplane_EtcdWatchHotReload(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Instance Registration ───────────────────────────────────────────
-
+// Instance Registration
 // TestE2E_Dataplane_InstanceRegistration tests that the gateway registers itself
 // to etcd and the instance count reflects running gateways.
 func TestE2E_Dataplane_InstanceRegistration(t *testing.T) {
@@ -785,8 +776,7 @@ func TestE2E_Dataplane_InstanceRegistration(t *testing.T) {
 	assert.Equal(t, 1, int(instanceResp3.Count), "after stopping gw2, only 1 instance should remain")
 }
 
-// ── Disabled Route ──────────────────────────────────────────────────
-
+// Disabled Route
 // TestE2E_Dataplane_DisabledRoute tests that routes with status=0 are not served.
 func TestE2E_Dataplane_DisabledRoute(t *testing.T) {
 	if testing.Short() {
@@ -854,8 +844,7 @@ func TestE2E_Dataplane_DisabledRoute(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Metrics Endpoint ────────────────────────────────────────────────
-
+// Metrics Endpoint
 // TestE2E_Dataplane_MetricsEndpoint tests that the gateway exposes metrics.
 func TestE2E_Dataplane_MetricsEndpoint(t *testing.T) {
 	if testing.Short() {

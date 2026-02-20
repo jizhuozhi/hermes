@@ -20,8 +20,7 @@ import (
 //  runs as a compiled binary, and tests interact only via HTTP.
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Bootstrap Mode ──────────────────────────────────────────────────
-
+// Bootstrap Mode
 // TestE2E_Auth_BootstrapMode verifies that when no credentials exist,
 // unauthenticated requests are allowed (bootstrap mode).
 func TestE2E_Auth_BootstrapMode(t *testing.T) {
@@ -53,8 +52,7 @@ func TestE2E_Auth_BootstrapMode(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Credential Lifecycle ────────────────────────────────────────────
-
+// Credential Lifecycle
 // TestE2E_Auth_CredentialLifecycle tests bootstrap create → HMAC CRUD → delete → revoke.
 func TestE2E_Auth_CredentialLifecycle(t *testing.T) {
 	if testing.Short() {
@@ -143,8 +141,7 @@ func TestE2E_Auth_CredentialLifecycle(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Scope Enforcement ───────────────────────────────────────────────
-
+// Scope Enforcement
 // TestE2E_Auth_ScopeEnforcement verifies that credentials are scope-gated.
 func TestE2E_Auth_ScopeEnforcement(t *testing.T) {
 	if testing.Short() {
@@ -288,8 +285,7 @@ func TestE2E_Auth_ScopeIsolation(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Signature Verification ──────────────────────────────────────────
-
+// Signature Verification
 // TestE2E_Auth_InvalidSignature verifies invalid HMAC signatures are rejected.
 func TestE2E_Auth_InvalidSignature(t *testing.T) {
 	if testing.Short() {
@@ -325,8 +321,7 @@ func TestE2E_Auth_InvalidSignature(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Disabled Credential ─────────────────────────────────────────────
-
+// Disabled Credential
 // TestE2E_Auth_DisabledCredential verifies that disabled credentials are rejected.
 func TestE2E_Auth_DisabledCredential(t *testing.T) {
 	if testing.Short() {
@@ -380,8 +375,7 @@ func TestE2E_Auth_DisabledCredential(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── WhoAmI ──────────────────────────────────────────────────────────
-
+// WhoAmI
 // TestE2E_Auth_WhoAmI verifies the whoami endpoint.
 func TestE2E_Auth_WhoAmI(t *testing.T) {
 	if testing.Short() {
@@ -417,8 +411,7 @@ func TestE2E_Auth_WhoAmI(t *testing.T) {
 	assert.Contains(t, scopes, "config:write")
 }
 
-// ── Audit Trail ─────────────────────────────────────────────────────
-
+// Audit Trail
 // TestE2E_Auth_AuditTrail verifies that operations generate audit logs.
 func TestE2E_Auth_AuditTrail(t *testing.T) {
 	if testing.Short() {
@@ -461,8 +454,7 @@ func TestE2E_Auth_AuditTrail(t *testing.T) {
 	assert.True(t, total > 0, "audit log should have entries")
 }
 
-// ── Namespace-Scoped Credentials ────────────────────────────────────
-
+// Namespace-Scoped Credentials
 // TestE2E_Auth_NamespaceScopedCredentials verifies credentials are namespace-scoped.
 func TestE2E_Auth_NamespaceScopedCredentials(t *testing.T) {
 	if testing.Short() {
@@ -531,8 +523,7 @@ func TestE2E_Auth_NamespaceScopedCredentials(t *testing.T) {
 	assert.Equal(t, float64(1), data["total"])
 }
 
-// ── Member Management ───────────────────────────────────────────────
-
+// Member Management
 // TestE2E_Auth_MemberManagement tests adding, listing, updating, and removing members.
 // Uses OIDC to create users in the database (code exchange syncs users).
 func TestE2E_Auth_MemberManagement(t *testing.T) {
@@ -657,8 +648,7 @@ func TestE2E_Auth_MemberValidation(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Group Bindings ──────────────────────────────────────────────────
-
+// Group Bindings
 // TestE2E_Auth_GroupBindings tests OIDC group → namespace role bindings.
 func TestE2E_Auth_GroupBindings(t *testing.T) {
 	if testing.Short() {
@@ -767,8 +757,7 @@ func TestE2E_Auth_GroupBindingValidation(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Admin User Management ───────────────────────────────────────────
-
+// Admin User Management
 // TestE2E_Auth_AdminUserManagement tests the admin:users scope for global user management.
 // Uses OIDC to create users in the database.
 func TestE2E_Auth_AdminUserManagement(t *testing.T) {
@@ -852,8 +841,7 @@ func TestE2E_Auth_AdminUserManagement(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Namespace Management ────────────────────────────────────────────
-
+// Namespace Management
 // TestE2E_Auth_NamespaceManagement tests namespace CRUD with scope enforcement.
 func TestE2E_Auth_NamespaceManagement(t *testing.T) {
 	if testing.Short() {
@@ -937,8 +925,7 @@ func TestE2E_Auth_NamespaceManagement(t *testing.T) {
 //  token validation edge cases.
 // ══════════════════════════════════════════════════════════════════════
 
-// ── OIDC Auth Config ────────────────────────────────────────────────
-
+// OIDC Auth Config
 // TestE2E_OIDC_AuthConfigEnabled verifies /api/auth/config reports enabled=true.
 func TestE2E_OIDC_AuthConfigEnabled(t *testing.T) {
 	if testing.Short() {
@@ -966,8 +953,7 @@ func TestE2E_OIDC_AuthConfigEnabled(t *testing.T) {
 	assert.Equal(t, true, data["enabled"])
 }
 
-// ── Login Redirect ──────────────────────────────────────────────────
-
+// Login Redirect
 // TestE2E_OIDC_LoginRedirect verifies GET /api/auth/login redirects to the IdP.
 func TestE2E_OIDC_LoginRedirect(t *testing.T) {
 	if testing.Short() {
@@ -1005,8 +991,7 @@ func TestE2E_OIDC_LoginRedirect(t *testing.T) {
 	assert.Contains(t, loc, "scope=openid+profile+email")
 }
 
-// ── Code → Token Exchange ───────────────────────────────────────────
-
+// Code → Token Exchange
 // TestE2E_OIDC_CodeTokenExchange verifies the authorization code → token flow
 // and that the user is synced to the database.
 func TestE2E_OIDC_CodeTokenExchange(t *testing.T) {
@@ -1057,8 +1042,7 @@ func TestE2E_OIDC_CodeTokenExchange(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Bearer Token Authentication ─────────────────────────────────────
-
+// Bearer Token Authentication
 // TestE2E_OIDC_BearerAuthentication verifies that a valid JWT grants API access.
 func TestE2E_OIDC_BearerAuthentication(t *testing.T) {
 	if testing.Short() {
@@ -1114,8 +1098,7 @@ func TestE2E_OIDC_BearerAuthentication(t *testing.T) {
 	assert.Equal(t, "oidc-domain", data["name"])
 }
 
-// ── Token Refresh ───────────────────────────────────────────────────
-
+// Token Refresh
 // TestE2E_OIDC_TokenRefresh verifies POST /api/auth/refresh returns a new access token.
 func TestE2E_OIDC_TokenRefresh(t *testing.T) {
 	if testing.Short() {
@@ -1172,8 +1155,7 @@ func TestE2E_OIDC_TokenRefresh(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Initial Admin Users ─────────────────────────────────────────────
-
+// Initial Admin Users
 // TestE2E_OIDC_InitialAdminUser verifies that users matching initial_admin_users
 // get is_admin=true on first login, and that non-matching users do not.
 func TestE2E_OIDC_InitialAdminUser(t *testing.T) {
@@ -1252,8 +1234,7 @@ func TestE2E_OIDC_InitialAdminUser(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Userinfo ────────────────────────────────────────────────────────
-
+// Userinfo
 // TestE2E_OIDC_Userinfo verifies GET /api/auth/userinfo returns correct claims.
 func TestE2E_OIDC_Userinfo(t *testing.T) {
 	if testing.Short() {
@@ -1296,8 +1277,7 @@ func TestE2E_OIDC_Userinfo(t *testing.T) {
 	assert.Contains(t, groups, "devops")
 }
 
-// ── Group Binding RBAC ──────────────────────────────────────────────
-
+// Group Binding RBAC
 // TestE2E_OIDC_GroupBindingRBAC verifies that OIDC groups are resolved to
 // namespace roles via group bindings, granting the correct scopes.
 func TestE2E_OIDC_GroupBindingRBAC(t *testing.T) {
@@ -1421,8 +1401,7 @@ func TestE2E_OIDC_GroupBindingRBAC(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Token Expiry ────────────────────────────────────────────────────
-
+// Token Expiry
 // TestE2E_OIDC_ExpiredToken verifies that expired JWTs are rejected.
 func TestE2E_OIDC_ExpiredToken(t *testing.T) {
 	if testing.Short() {
@@ -1455,8 +1434,7 @@ func TestE2E_OIDC_ExpiredToken(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Invalid Signature ───────────────────────────────────────────────
-
+// Invalid Signature
 // TestE2E_OIDC_InvalidSignature verifies that JWTs signed with wrong key are rejected.
 func TestE2E_OIDC_InvalidSignature(t *testing.T) {
 	if testing.Short() {
@@ -1489,8 +1467,7 @@ func TestE2E_OIDC_InvalidSignature(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── WhoAmI OIDC ─────────────────────────────────────────────────────
-
+// WhoAmI OIDC
 // TestE2E_OIDC_WhoAmI verifies that /api/v1/whoami reports OIDC source and correct subject.
 func TestE2E_OIDC_WhoAmI(t *testing.T) {
 	if testing.Short() {
@@ -1532,8 +1509,7 @@ func TestE2E_OIDC_WhoAmI(t *testing.T) {
 	assert.Equal(t, "whoami-oidc-sub", data["sub"])
 }
 
-// ── Direct Member Assignment ────────────────────────────────────────
-
+// Direct Member Assignment
 // TestE2E_OIDC_DirectMemberRole verifies that a direct member assignment
 // (via SetNamespaceMember) gives the user the correct scopes,
 // and that direct assignment takes precedence over a lower group binding.
@@ -1615,8 +1591,7 @@ func TestE2E_OIDC_DirectMemberRole(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── OIDC + HMAC Coexistence ─────────────────────────────────────────
-
+// OIDC + HMAC Coexistence
 // TestE2E_OIDC_HMACCoexistence verifies that both OIDC Bearer and HMAC-SHA256
 // authentication work simultaneously on the same server.
 func TestE2E_OIDC_HMACCoexistence(t *testing.T) {
@@ -1699,8 +1674,7 @@ func TestE2E_OIDC_HMACCoexistence(t *testing.T) {
 //  across server restarts.
 // ══════════════════════════════════════════════════════════════════════
 
-// ── Builtin Login ───────────────────────────────────────────────────
-
+// Builtin Login
 // TestE2E_Builtin_LoginAndAccess verifies the builtin login flow:
 // login with email/password → receive JWT → use JWT to access protected endpoints.
 func TestE2E_Builtin_LoginAndAccess(t *testing.T) {
@@ -1759,8 +1733,7 @@ func TestE2E_Builtin_LoginAndAccess(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Builtin Key Rotation ────────────────────────────────────────────
-
+// Builtin Key Rotation
 // TestE2E_Builtin_KeyRotation verifies:
 // 1. Tokens issued before rotation remain valid (grace period).
 // 2. New tokens are signed with the new key.
@@ -1836,8 +1809,7 @@ func TestE2E_Builtin_KeyRotation(t *testing.T) {
 	assert.NotEqual(t, preRotationToken, postRotationToken)
 }
 
-// ── Builtin Token Survives Restart ──────────────────────────────────
-
+// Builtin Token Survives Restart
 // TestE2E_Builtin_TokenSurvivesRestart verifies that tokens remain valid
 // after server restart because the signing key is persisted in PostgreSQL.
 func TestE2E_Builtin_TokenSurvivesRestart(t *testing.T) {
@@ -1888,8 +1860,7 @@ func TestE2E_Builtin_TokenSurvivesRestart(t *testing.T) {
 	resp.Body.Close()
 }
 
-// ── Builtin Change Password ─────────────────────────────────────────
-
+// Builtin Change Password
 // TestE2E_Builtin_ChangePassword verifies the password change flow.
 func TestE2E_Builtin_ChangePassword(t *testing.T) {
 	if testing.Short() {
@@ -1942,8 +1913,7 @@ func TestE2E_Builtin_ChangePassword(t *testing.T) {
 	assert.NotEmpty(t, data["access_token"])
 }
 
-// ── Builtin + HMAC Coexistence ──────────────────────────────────────
-
+// Builtin + HMAC Coexistence
 // TestE2E_Builtin_HMACCoexistence verifies that builtin JWT auth and HMAC
 // credentials work simultaneously (builtin mode doesn't break HMAC auth).
 func TestE2E_Builtin_HMACCoexistence(t *testing.T) {
@@ -2007,8 +1977,7 @@ func TestE2E_Builtin_HMACCoexistence(t *testing.T) {
 	assert.Equal(t, "builtin-hmac-domain", data["name"])
 }
 
-// ── Builtin User CRUD (Admin) ────────────────────────────────────────
-
+// Builtin User CRUD (Admin)
 // TestE2E_Builtin_UserCRUD verifies admin user management in builtin mode:
 // create users, update user info, reset password, delete users, and edge cases.
 func TestE2E_Builtin_UserCRUD(t *testing.T) {
@@ -2039,7 +2008,7 @@ func TestE2E_Builtin_UserCRUD(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	adminToken := readJSON(t, resp)["access_token"].(string)
 
-	// ── Create a new builtin user ──
+	// Create a new builtin user
 	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
 		"email": "alice@hermes.local", "password": "alice123", "name": "Alice", "is_admin": false,
 	})
@@ -2061,14 +2030,14 @@ func TestE2E_Builtin_UserCRUD(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Duplicate create → 409 ──
+	// Duplicate create → 409
 	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
 		"email": "alice@hermes.local", "password": "alice123",
 	})
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Update user info ──
+	// Update user info
 	resp = bearerRequest(t, "PUT", base+"/api/v1/users/"+aliceSub, adminToken, map[string]any{
 		"name": "Alice Updated", "is_admin": true,
 	})
@@ -2086,7 +2055,7 @@ func TestE2E_Builtin_UserCRUD(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Reset user password ──
+	// Reset user password
 	resp = bearerRequest(t, "PUT", base+"/api/v1/users/"+aliceSub+"/reset-password", adminToken, map[string]any{
 		"new_password": "newpass789",
 	})
@@ -2107,27 +2076,27 @@ func TestE2E_Builtin_UserCRUD(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Reset password for non-builtin user → 400 ──
+	// Reset password for non-builtin user → 400
 	resp = bearerRequest(t, "PUT", base+"/api/v1/users/oidc:someone/reset-password", adminToken, map[string]any{
 		"new_password": "whatever",
 	})
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Reset password for non-existent user → 404 ──
+	// Reset password for non-existent user → 404
 	resp = bearerRequest(t, "PUT", base+"/api/v1/users/builtin:nobody@hermes.local/reset-password", adminToken, map[string]any{
 		"new_password": "whatever",
 	})
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Delete self → 400 ──
+	// Delete self → 400
 	adminSub := "builtin:admin@hermes.local"
 	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+adminSub, adminToken, nil)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Delete user ──
+	// Delete user
 	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+aliceSub, adminToken, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
@@ -2139,19 +2108,19 @@ func TestE2E_Builtin_UserCRUD(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Delete non-existent user → 404 ──
+	// Delete non-existent user → 404
 	resp = bearerRequest(t, "DELETE", base+"/api/v1/users/"+aliceSub, adminToken, nil)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Validation: missing email → 400 ──
+	// Validation: missing email → 400
 	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
 		"email": "", "password": "test123",
 	})
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Validation: short password → 400 ──
+	// Validation: short password → 400
 	resp = bearerRequest(t, "POST", base+"/api/v1/users", adminToken, map[string]any{
 		"email": "short@hermes.local", "password": "12345",
 	})

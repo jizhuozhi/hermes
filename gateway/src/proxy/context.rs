@@ -20,9 +20,6 @@ pub fn empty_body() -> BoxBody {
         .boxed()
 }
 
-/// Per-request context that flows through all phases.
-/// Analogous to nginx's `ngx_http_request_t` — carries request metadata
-/// and accumulates state across the filter chain.
 pub struct RequestContext {
     pub host: String,
     pub uri_path: String,
@@ -31,7 +28,6 @@ pub struct RequestContext {
     pub route_name: String,
     pub cluster_name: String,
     pub upstream_addr: String,
-    /// The downstream client IP address (from TCP peer or trusted X-Forwarded-For).
     pub client_ip: IpAddr,
     pub start: Instant,
     pub upstream_start: Option<Instant>,
@@ -55,9 +51,6 @@ impl RequestContext {
         }
     }
 
-    /// Build a JSON error response and record metrics in one place.
-    /// This is the single exit point for all error paths — eliminates
-    /// the 5x duplicated metrics + response-building code.
     pub fn error_response(&self, status: StatusCode, msg: &str) -> hyper::Response<BoxBody> {
         let mut buf = itoa::Buffer::new();
         let status_str = buf.format(status.as_u16());
@@ -109,7 +102,6 @@ impl RequestContext {
             .unwrap()
     }
 
-    /// Record final metrics for a successful response.
     pub fn finalize_metrics(&self, resp_status: u16) {
         let mut buf = itoa::Buffer::new();
         let status_str = buf.format(resp_status);
@@ -151,5 +143,118 @@ impl RequestContext {
             "route" => self.route_name.clone(),
         )
         .decrement(1.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn test_full_body_creates_boxed_body() {
+        let body = full_body("hello");
+        let _ = body;
+    }
+
+    #[test]
+    fn test_full_body_with_bytes() {
+        let body = full_body(bytes::Bytes::from_static(b"data"));
+        let _ = body;
+    }
+
+    #[test]
+    fn test_empty_body() {
+        let body = empty_body();
+        let _ = body;
+    }
+
+    #[test]
+    fn test_request_context_new() {
+        let ctx = RequestContext::new(
+            "example.com".to_string(),
+            "/api/v1".to_string(),
+            "GET".to_string(),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        );
+        assert_eq!(ctx.host, "example.com");
+        assert_eq!(ctx.uri_path, "/api/v1");
+        assert_eq!(ctx.method, "GET");
+        assert_eq!(ctx.client_ip, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        assert_eq!(ctx.domain_name, "");
+        assert_eq!(ctx.route_name, "");
+        assert_eq!(ctx.cluster_name, "");
+        assert_eq!(ctx.upstream_addr, "");
+        assert!(ctx.upstream_start.is_none());
+        assert!(ctx.route.is_none());
+    }
+
+    #[test]
+    fn test_request_context_error_response() {
+        let ctx = RequestContext::new(
+            "h.com".to_string(),
+            "/".to_string(),
+            "POST".to_string(),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+        );
+
+        let resp = ctx.error_response(http::StatusCode::BAD_GATEWAY, "upstream failed");
+        assert_eq!(resp.status(), http::StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            resp.headers().get("content-type").unwrap(),
+            "application/json"
+        );
+    }
+
+    #[test]
+    fn test_request_context_error_response_various_status() {
+        let ctx = RequestContext::new(
+            "h.com".to_string(),
+            "/".to_string(),
+            "GET".to_string(),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        );
+
+        for status in &[
+            http::StatusCode::BAD_REQUEST,
+            http::StatusCode::NOT_FOUND,
+            http::StatusCode::TOO_MANY_REQUESTS,
+            http::StatusCode::INTERNAL_SERVER_ERROR,
+            http::StatusCode::SERVICE_UNAVAILABLE,
+        ] {
+            let resp = ctx.error_response(*status, "err");
+            assert_eq!(resp.status(), *status);
+        }
+    }
+
+    #[test]
+    fn test_request_context_finalize_metrics() {
+        let mut ctx = RequestContext::new(
+            "h.com".to_string(),
+            "/".to_string(),
+            "GET".to_string(),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        );
+        ctx.domain_name = "test-domain".to_string();
+        ctx.route_name = "test-route".to_string();
+        ctx.cluster_name = "test-cluster".to_string();
+        ctx.upstream_addr = "10.0.0.1:8080".to_string();
+        ctx.upstream_start = Some(std::time::Instant::now());
+
+        ctx.finalize_metrics(200);
+        ctx.finalize_metrics(502);
+    }
+
+    #[test]
+    fn test_request_context_finalize_metrics_no_upstream_start() {
+        let mut ctx = RequestContext::new(
+            "h.com".to_string(),
+            "/".to_string(),
+            "GET".to_string(),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        );
+        ctx.domain_name = "d".to_string();
+        ctx.route_name = "r".to_string();
+        ctx.finalize_metrics(200);
     }
 }

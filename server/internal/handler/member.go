@@ -21,8 +21,7 @@ func NewMemberHandler(s store.Store, logger *zap.SugaredLogger) *MemberHandler {
 	return &MemberHandler{store: s, logger: logger}
 }
 
-// ── Namespace Members ────────────────────────────
-
+// Namespace Members
 // ListMembers returns all members of a namespace.
 func (h *MemberHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
@@ -105,8 +104,7 @@ func (h *MemberHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// ── Group Bindings ──────────────────────────────
-
+// Group Bindings
 // ListGroupBindings returns all OIDC group → role bindings for a namespace.
 func (h *MemberHandler) ListGroupBindings(w http.ResponseWriter, r *http.Request) {
 	ns := NamespaceFromContext(r.Context())
@@ -178,8 +176,7 @@ func (h *MemberHandler) RemoveGroupBinding(w http.ResponseWriter, r *http.Reques
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// ── Users (admin-only) ──────────────────────────
-
+// Users (admin-only)
 // ListUsers returns all known users.
 func (h *MemberHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.store.ListUsers(r.Context())

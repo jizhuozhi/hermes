@@ -15,11 +15,9 @@ where
 /// Top-level gateway configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayConfig {
-    /// Consul discovery settings.
     #[serde(default)]
     pub consul: ConsulConfig,
 
-    /// etcd settings for dynamic config.
     #[serde(default)]
     pub etcd: EtcdConfig,
 
@@ -27,7 +25,6 @@ pub struct GatewayConfig {
     #[serde(default)]
     pub registration: RegistrationConfig,
 
-    /// Instance registry for distributed rate limiting.
     /// Gateways register themselves in etcd and track peer count to split
     /// rate limits evenly across instances.
     #[serde(default)]
@@ -36,15 +33,12 @@ pub struct GatewayConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsulConfig {
-    /// Consul HTTP API address.
     #[serde(default = "default_consul_addr")]
     pub address: String,
 
-    /// Consul datacenter.
     #[serde(default)]
     pub datacenter: Option<String>,
 
-    /// Consul ACL token.
     #[serde(default)]
     pub token: Option<String>,
 
@@ -74,15 +68,12 @@ fn default_poll_interval() -> u64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EtcdConfig {
-    /// etcd endpoints.
     #[serde(default = "default_etcd_endpoints")]
     pub endpoints: Vec<String>,
 
-    /// etcd key prefix for domain configuration.
     #[serde(default = "default_etcd_domain_prefix")]
     pub domain_prefix: String,
 
-    /// etcd key prefix for cluster configuration.
     #[serde(default = "default_etcd_cluster_prefix")]
     pub cluster_prefix: String,
 
@@ -90,11 +81,9 @@ pub struct EtcdConfig {
     #[serde(default)]
     pub meta_prefix: Option<String>,
 
-    /// Username for etcd auth.
     #[serde(default)]
     pub username: Option<String>,
 
-    /// Password for etcd auth.
     #[serde(default)]
     pub password: Option<String>,
 }
@@ -124,108 +113,63 @@ fn default_etcd_cluster_prefix() -> String {
     "/hermes/clusters".to_string()
 }
 
-/// A domain definition — the top-level business domain boundary.
-///
-/// Each domain can match multiple hosts (exact or wildcard) and contains
-/// its own route table. Analogous to Nginx `server` blocks grouped by
-/// business concern, or Envoy `VirtualHost` extended with multi-host support.
-///
-/// Domain-level concerns (TLS, CORS, auth policies, rate limiting quotas)
-/// can be attached here. Access control (OIDC + GBAC + RBAC) is enforced
-/// at the controlplane layer — the data-plane / etcd are auth-unaware.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DomainConfig {
-    /// Unique domain name (e.g. "user-service", "payment", "admin").
     pub name: String,
 
-    /// Host patterns this domain matches. Supports:
-    /// - exact: `api.example.com`
-    /// - wildcard suffix: `*.example.com`
-    /// - wildcard prefix: `api.*`
-    ///
-    /// A domain with multiple hosts allows grouping related endpoints
-    /// (e.g. `api.example.com` + `api-internal.example.com`) under one
-    /// business domain for unified route management.
+    /// Host patterns. Supports exact (`api.example.com`),
+    /// wildcard suffix (`*.example.com`), wildcard prefix (`api.*`).
     pub hosts: Vec<String>,
 
-    /// Routes belonging to this domain.
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub routes: Vec<RouteConfig>,
 }
 
-/// A single route definition.
-///
-/// Routes no longer embed upstream configuration directly. Instead they
-/// reference one or more `ClusterConfig` entries by name with weights,
+/// Routes reference `ClusterConfig` entries by name with weights,
 /// enabling canary / blue-green / traffic-split at the routing layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteConfig {
-    /// Unique route ID.
     #[serde(default)]
     pub id: String,
 
-    /// Route name.
     #[serde(default)]
     pub name: String,
 
-    /// URI pattern. Supports exact match, prefix match (e.g. `/v1/api/*`), and `/*` for catch-all.
+    /// URI pattern. Supports exact match, prefix match (`/v1/api/*`), and `/*` for catch-all.
     pub uri: String,
 
     /// Allowed HTTP methods. Empty means all methods.
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub methods: Vec<String>,
 
-    /// Header matchers. All conditions must match (AND semantics).
-    /// Enables fine-grained routing based on request headers
-    /// (e.g. API version negotiation, tenant routing, canary flags).
+    /// Header matchers (AND semantics).
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub headers: Vec<HeaderMatcher>,
 
-    /// Priority for route matching. Higher value = higher priority.
-    /// More specific URIs automatically get higher priority.
+    /// Higher value = higher priority.
     #[serde(default)]
     pub priority: i32,
 
-    /// Weighted cluster references. Traffic is distributed across clusters
-    /// according to their weights. This replaces the old inline `upstream` field.
-    ///
-    /// Example: `[{name:"prod", weight:95}, {name:"canary", weight:5}]`
+    /// Weighted cluster references for traffic distribution.
     pub clusters: Vec<WeightedCluster>,
 
-    /// Rate limiting configuration.
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
 
-    /// Optional header name for cluster override.
-    /// When set, if the request carries this header, its value is used as the
-    /// cluster name — bypassing weighted selection. Useful for per-environment
-    /// testing (e.g. `X-Cluster-Override: canary`).
+    /// When set, the request header value overrides weighted cluster selection.
     #[serde(default)]
     pub cluster_override_header: Option<String>,
 
-    /// Request-phase header transforms.
-    /// Applied to upstream requests before forwarding. Useful for traffic coloring
-    /// (e.g. injecting `X-Env: canary` so upstream services can branch behavior).
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub request_header_transforms: Vec<HeaderTransform>,
 
-    /// Response-phase header transforms.
-    /// Applied to downstream responses before sending to clients.
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub response_header_transforms: Vec<HeaderTransform>,
 
-    /// Maximum allowed request body size in bytes.
-    /// When set, requests with `Content-Length` exceeding this limit are
-    /// rejected with 413 (Payload Too Large) before reading the body.
-    /// Streaming requests without `Content-Length` are checked during body
-    /// buffering. `None` means no limit.
+    /// Requests exceeding this limit are rejected with 413. `None` means no limit.
     #[serde(default)]
     pub max_body_bytes: Option<u64>,
 
-    /// Enable response compression (gzip / brotli) for this route.
-    /// When true, responses are compressed using streaming compression
-    /// if the client sends a supported `Accept-Encoding` header and the
-    /// upstream hasn't already set `Content-Encoding`.
     #[serde(default)]
     pub enable_compression: bool,
 
@@ -233,33 +177,24 @@ pub struct RouteConfig {
     #[serde(default = "default_status")]
     pub status: u8,
 
-    /// Plugin configs (kept for compatibility, we map relevant ones).
     #[serde(default)]
     pub plugins: Option<serde_json::Value>,
 }
 
-/// Header matching condition for a route.
-///
-/// Supports exact match (default), prefix match, regex match, and
-/// presence-only check. Multiple matchers on a route use AND semantics.
+/// Supports exact (default), prefix, regex, and presence-only match.
+/// Multiple matchers on a route use AND semantics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderMatcher {
-    /// Header name (case-insensitive at match time).
     pub name: String,
 
-    /// Expected value. Ignored when `match_type` is "present".
+    /// Ignored when `match_type` is "present".
     #[serde(default)]
     pub value: String,
 
-    /// Match type: "exact" (default), "prefix", "regex", "present".
-    /// - "exact": header value must equal `value` exactly.
-    /// - "prefix": header value must start with `value`.
-    /// - "regex": header value must match `value` as a regex pattern.
-    /// - "present": header just needs to exist, `value` is ignored.
+    /// "exact" (default), "prefix", "regex", "present".
     #[serde(default = "default_header_match_type")]
     pub match_type: String,
 
-    /// If true, the condition is inverted (header must NOT match).
     #[serde(default)]
     pub invert: bool,
 }
@@ -268,26 +203,15 @@ fn default_header_match_type() -> String {
     "exact".to_string()
 }
 
-/// A single header transformation rule.
-///
-/// Operations:
-/// - `"set"` — set the header to `value`, replacing any existing value.
-/// - `"add"` — append `value` to the header (allows multiple values).
-/// - `"remove"` — remove the header entirely (`value` is ignored).
-///
-/// Applied at request or response phase depending on which list it belongs to.
-/// Use request transforms for traffic coloring (e.g. `X-Env: canary`),
-/// and response transforms for exposing debug info or stripping internal headers.
+/// Operations: "set" (replace), "add" (append), "remove" (delete).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeaderTransform {
-    /// Header name.
     pub name: String,
 
-    /// Header value. Ignored when `action` is "remove".
     #[serde(default)]
     pub value: String,
 
-    /// Action: "set" (default), "add", "remove".
+    /// "set" (default), "add", "remove".
     #[serde(default = "default_header_transform_action")]
     pub action: String,
 }
@@ -296,14 +220,11 @@ fn default_header_transform_action() -> String {
     "set".to_string()
 }
 
-/// A weighted reference to a cluster. The route selects a cluster
-/// proportional to its weight before delegating to the cluster's LB.
+/// Weighted reference to a cluster for traffic splitting.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeightedCluster {
-    /// Cluster name (must match a `ClusterConfig.name`).
     pub name: String,
 
-    /// Relative weight for traffic distribution.
     #[serde(default = "default_cluster_weight")]
     pub weight: u32,
 }
@@ -316,72 +237,54 @@ fn default_status() -> u8 {
     1
 }
 
-/// An independent cluster (upstream) definition.
-///
-/// Clusters own all upstream-related concerns: nodes, LB policy, timeouts,
-/// health checks, circuit breakers, retries. Multiple routes can reference
-/// the same cluster, and a single route can split traffic across clusters.
+/// Cluster (upstream) definition. Owns nodes, LB policy, timeouts,
+/// health checks, circuit breakers, retries.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ClusterConfig {
-    /// Unique cluster name.
     pub name: String,
 
-    /// Load balancing type: "roundrobin", "random", "least_request", "peak_ewma".
+    /// "roundrobin", "random", "least_request", "peak_ewma".
     #[serde(rename = "type", default = "default_upstream_type")]
     pub lb_type: String,
 
-    /// Connection timeout settings (seconds).
     #[serde(default)]
     pub timeout: TimeoutConfig,
 
-    /// HTTP scheme for upstream.
     #[serde(default = "default_scheme")]
     pub scheme: String,
 
-    /// Pass host mode: "pass" (use client host), "node" (use upstream host), "rewrite" + upstream_host.
+    /// "pass" (use client host), "node" (use upstream host), "rewrite" + upstream_host.
     #[serde(default = "default_pass_host")]
     pub pass_host: String,
 
-    /// Upstream host to use when pass_host is "rewrite".
     #[serde(default)]
     pub upstream_host: Option<String>,
 
-    /// Static upstream nodes.
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub nodes: Vec<UpstreamNode>,
 
-    /// Consul service discovery.
     #[serde(default)]
     pub discovery_type: Option<String>,
 
-    /// Service name for consul discovery.
     #[serde(default)]
     pub service_name: Option<String>,
 
-    /// Consul discovery args.
     #[serde(default)]
     pub discovery_args: Option<DiscoveryArgs>,
 
-    /// Keepalive pool settings.
     #[serde(default)]
     pub keepalive_pool: KeepalivePoolConfig,
 
-    /// Health check configuration.
     #[serde(default)]
     pub health_check: Option<HealthCheckConfig>,
 
-    /// Retry policy for failed upstream requests.
     #[serde(default)]
     pub retry: Option<RetryConfig>,
 
-    /// Circuit breaker configuration per upstream node.
     #[serde(default)]
     pub circuit_breaker: Option<CircuitBreakerConfig>,
 
-    /// Whether to verify upstream TLS certificates.
-    /// Default is `false` — typical for gateway scenarios where upstreams are
-    /// internal services using self-signed or private CA certificates.
-    /// Set to `true` to enforce full certificate chain validation.
+    /// Default `false` — typical for internal services with self-signed certs.
     #[serde(default)]
     pub tls_verify: bool,
 }
@@ -400,15 +303,12 @@ fn default_pass_host() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeoutConfig {
-    /// Connect timeout in seconds.
     #[serde(default = "default_timeout")]
     pub connect: f64,
 
-    /// Send timeout in seconds.
     #[serde(default = "default_timeout")]
     pub send: f64,
 
-    /// Read timeout in seconds.
     #[serde(default = "default_timeout")]
     pub read: f64,
 }
@@ -433,7 +333,6 @@ pub struct UpstreamNode {
     pub port: u16,
     #[serde(default = "default_weight")]
     pub weight: u32,
-    /// Optional metadata for subset matching.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
 }
@@ -444,22 +343,18 @@ fn default_weight() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryArgs {
-    /// Metadata match filters for consul service discovery.
     #[serde(default)]
     pub metadata_match: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeepalivePoolConfig {
-    /// Idle timeout in seconds.
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout: u64,
 
-    /// Max requests per connection.
     #[serde(default = "default_requests")]
     pub requests: u64,
 
-    /// Pool size.
     #[serde(default = "default_pool_size")]
     pub size: usize,
 }
@@ -486,36 +381,29 @@ fn default_pool_size() -> usize {
     320
 }
 
-/// Rate limiting configuration.
-/// Uses a per-core token bucket to avoid cross-core contention.
+/// Per-core token bucket to avoid cross-core contention.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitConfig {
-    /// Rate limit mode: "req" (request rate) or "count" (fixed window count).
+    /// "req" (request rate) or "count" (fixed window count).
     #[serde(default = "default_limit_mode")]
     pub mode: String,
 
-    /// Requests per second (for mode "req").
     #[serde(default)]
     pub rate: Option<f64>,
 
-    /// Burst capacity (for mode "req").
     #[serde(default)]
     pub burst: Option<u64>,
 
-    /// Fixed window count limit (for mode "count").
     #[serde(default)]
     pub count: Option<u64>,
 
-    /// Time window in seconds (for mode "count").
     #[serde(default)]
     pub time_window: Option<u64>,
 
-    /// Key expression for rate limit grouping.
-    /// Supported: "remote_addr", "host_uri" (concat host+uri), "uri".
+    /// "remote_addr", "host_uri", "uri".
     #[serde(default = "default_limit_key")]
     pub key: String,
 
-    /// HTTP status code to return when rate limited.
     #[serde(default = "default_rejected_code")]
     pub rejected_code: u16,
 }
@@ -534,46 +422,34 @@ fn default_rejected_code() -> u16 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheckConfig {
-    /// Active health check: send HTTP probes to upstream nodes.
-    /// This is the only health check mode — passive health check has been
-    /// removed in favour of the circuit breaker for real-traffic failure detection.
     #[serde(default)]
     pub active: Option<ActiveHealthCheck>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveHealthCheck {
-    /// Health check interval in seconds.
     #[serde(default = "default_hc_interval")]
     pub interval: u64,
 
-    /// Health check path.
     #[serde(default = "default_hc_path")]
     pub path: String,
 
-    /// Optional override port for health check probes.
-    /// When set, probes are sent to this port instead of the node's business port.
-    /// Useful when the health endpoint runs on a separate management port.
+    /// Override port for probes (when health endpoint runs on a separate port).
     #[serde(default)]
     pub port: Option<u16>,
 
-    /// Expected healthy HTTP status codes.
     #[serde(default = "default_healthy_statuses")]
     pub healthy_statuses: Vec<u16>,
 
-    /// Number of consecutive successes to mark healthy.
     #[serde(default = "default_hc_threshold")]
     pub healthy_threshold: u32,
 
-    /// Number of consecutive failures to mark unhealthy.
     #[serde(default = "default_hc_threshold")]
     pub unhealthy_threshold: u32,
 
-    /// Timeout for health check request in seconds.
     #[serde(default = "default_hc_timeout")]
     pub timeout: u64,
 
-    /// Maximum number of concurrent health check probes per cluster.
     /// Prevents probe storms when a cluster has thousands of instances.
     #[serde(default = "default_hc_concurrency")]
     pub concurrency: usize,
@@ -603,26 +479,20 @@ fn default_hc_concurrency() -> usize {
     64
 }
 
-/// Self-registration configuration for registering this gateway to Consul.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrationConfig {
-    /// Whether self-registration is enabled.
     #[serde(default)]
     pub enabled: bool,
 
-    /// Service name to register as.
     #[serde(default = "default_registration_service_name")]
     pub service_name: String,
 
-    /// TTL for the health check in seconds.
     #[serde(default = "default_ttl_secs")]
     pub ttl_secs: u64,
 
-    /// Deregister critical service after this many seconds.
     #[serde(default = "default_deregister_after_secs")]
     pub deregister_after_secs: u64,
 
-    /// Metadata to attach to the registered service.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
 }
@@ -651,22 +521,17 @@ fn default_deregister_after_secs() -> u64 {
     60
 }
 
-/// Retry policy for failed upstream requests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryConfig {
-    /// Maximum number of retry attempts (excluding the initial request).
     #[serde(default = "default_retry_count")]
     pub count: u32,
 
-    /// HTTP status codes that trigger a retry.
     #[serde(default = "default_retry_statuses")]
     pub retry_on_statuses: Vec<u16>,
 
-    /// Whether to retry on connection errors.
     #[serde(default = "default_true")]
     pub retry_on_connect_failure: bool,
 
-    /// Whether to retry on timeouts.
     #[serde(default = "default_true")]
     pub retry_on_timeout: bool,
 }
@@ -683,24 +548,15 @@ fn default_true() -> bool {
     true
 }
 
-/// Circuit breaker configuration per upstream node.
-///
-/// State machine: Closed → Open → HalfOpen → Closed/Open
-/// - Closed: requests flow normally, failures are counted
-/// - Open: all requests are rejected immediately (fast-fail)
-/// - HalfOpen: a single probe request is allowed through;
-///   success → Closed, failure → Open
+/// State machine: Closed → Open → HalfOpen → Closed/Open.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircuitBreakerConfig {
-    /// Number of consecutive failures to trip the breaker (Closed → Open).
     #[serde(default = "default_cb_failure_threshold")]
     pub failure_threshold: u32,
 
-    /// Number of consecutive successes in HalfOpen to close the breaker.
     #[serde(default = "default_cb_success_threshold")]
     pub success_threshold: u32,
 
-    /// How long (seconds) the breaker stays Open before transitioning to HalfOpen.
     #[serde(default = "default_cb_open_duration")]
     pub open_duration_secs: u64,
 }
@@ -717,23 +573,18 @@ fn default_cb_open_duration() -> u64 {
     30
 }
 
-/// Instance registry configuration for distributed rate limiting.
-///
-/// Each gateway instance registers itself under a shared etcd prefix with a lease.
-/// All instances watch this prefix to know the total peer count, then divide
-/// the configured rate/count limits evenly. This achieves decentralized, eventually-
-/// consistent distributed rate limiting without a central counter.
+/// Each gateway registers under a shared etcd prefix with a lease.
+/// All instances watch this prefix to know total peer count, then divide
+/// rate/count limits evenly for decentralized distributed rate limiting.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceRegistryConfig {
-    /// Whether distributed instance registry is enabled.
     #[serde(default)]
     pub enabled: bool,
 
-    /// etcd key prefix for instance registration.
     #[serde(default = "default_instance_prefix")]
     pub prefix: String,
 
-    /// Lease TTL in seconds. The instance key auto-expires if keepalive stops.
+    /// Lease TTL in seconds. Auto-expires if keepalive stops.
     #[serde(default = "default_instance_lease_ttl")]
     pub lease_ttl_secs: u64,
 }
@@ -754,4 +605,616 @@ fn default_instance_prefix() -> String {
 
 fn default_instance_lease_ttl() -> u64 {
     15
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_domain_full_serde() {
+        let json = r#"{
+            "name": "user-service",
+            "hosts": ["api.example.com", "*.staging.example.com"],
+            "routes": [
+                {
+                    "id": "r1",
+                    "name": "users-api",
+                    "uri": "/v1/users/*",
+                    "methods": ["GET", "POST"],
+                    "headers": [
+                        {"name": "X-Canary", "value": "true", "match_type": "exact", "invert": false}
+                    ],
+                    "priority": 10,
+                    "clusters": [
+                        {"name": "prod", "weight": 90},
+                        {"name": "canary", "weight": 10}
+                    ],
+                    "rate_limit": {
+                        "mode": "req",
+                        "rate": 1000.0,
+                        "burst": 200,
+                        "key": "remote_addr",
+                        "rejected_code": 429
+                    },
+                    "cluster_override_header": "X-Override",
+                    "request_header_transforms": [
+                        {"name": "X-Env", "value": "canary", "action": "set"}
+                    ],
+                    "response_header_transforms": [
+                        {"name": "X-Debug", "value": "", "action": "remove"}
+                    ],
+                    "max_body_bytes": 1048576,
+                    "enable_compression": true,
+                    "status": 1
+                }
+            ]
+        }"#;
+
+        let domain: DomainConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(domain.name, "user-service");
+        assert_eq!(domain.hosts.len(), 2);
+        assert_eq!(domain.hosts[0], "api.example.com");
+        assert_eq!(domain.hosts[1], "*.staging.example.com");
+        assert_eq!(domain.routes.len(), 1);
+
+        let route = &domain.routes[0];
+        assert_eq!(route.id, "r1");
+        assert_eq!(route.name, "users-api");
+        assert_eq!(route.uri, "/v1/users/*");
+        assert_eq!(route.methods, vec!["GET", "POST"]);
+        assert_eq!(route.priority, 10);
+        assert_eq!(route.status, 1);
+        assert_eq!(route.max_body_bytes, Some(1048576));
+        assert!(route.enable_compression);
+        assert_eq!(
+            route.cluster_override_header,
+            Some("X-Override".to_string())
+        );
+
+        assert_eq!(route.clusters.len(), 2);
+        assert_eq!(route.clusters[0].name, "prod");
+        assert_eq!(route.clusters[0].weight, 90);
+        assert_eq!(route.clusters[1].name, "canary");
+        assert_eq!(route.clusters[1].weight, 10);
+
+        let rl = route.rate_limit.as_ref().unwrap();
+        assert_eq!(rl.mode, "req");
+        assert_eq!(rl.rate, Some(1000.0));
+        assert_eq!(rl.burst, Some(200));
+        assert_eq!(rl.key, "remote_addr");
+        assert_eq!(rl.rejected_code, 429);
+
+        assert_eq!(route.headers.len(), 1);
+        assert_eq!(route.headers[0].name, "X-Canary");
+        assert_eq!(route.headers[0].value, "true");
+        assert_eq!(route.headers[0].match_type, "exact");
+        assert!(!route.headers[0].invert);
+
+        assert_eq!(route.request_header_transforms.len(), 1);
+        assert_eq!(route.request_header_transforms[0].name, "X-Env");
+        assert_eq!(route.request_header_transforms[0].value, "canary");
+        assert_eq!(route.request_header_transforms[0].action, "set");
+
+        assert_eq!(route.response_header_transforms.len(), 1);
+        assert_eq!(route.response_header_transforms[0].name, "X-Debug");
+        assert_eq!(route.response_header_transforms[0].action, "remove");
+    }
+
+    #[test]
+    fn test_domain_minimal_defaults() {
+        let json = r#"{
+            "name": "minimal",
+            "hosts": ["example.com"],
+            "routes": [
+                {
+                    "uri": "/",
+                    "clusters": [{"name": "backend"}]
+                }
+            ]
+        }"#;
+
+        let domain: DomainConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(domain.name, "minimal");
+
+        let route = &domain.routes[0];
+        assert_eq!(route.id, "");
+        assert_eq!(route.name, "");
+        assert!(route.methods.is_empty());
+        assert!(route.headers.is_empty());
+        assert_eq!(route.priority, 0);
+        assert_eq!(route.status, 1);
+        assert!(route.rate_limit.is_none());
+        assert!(route.cluster_override_header.is_none());
+        assert!(route.request_header_transforms.is_empty());
+        assert!(route.response_header_transforms.is_empty());
+        assert!(route.max_body_bytes.is_none());
+        assert!(!route.enable_compression);
+        assert_eq!(route.clusters[0].weight, 100);
+    }
+
+    #[test]
+    fn test_domain_null_routes_defaults_to_empty() {
+        let json = r#"{"name": "no-routes", "hosts": ["h.com"], "routes": null}"#;
+        let domain: DomainConfig = serde_json::from_str(json).unwrap();
+        assert!(domain.routes.is_empty());
+    }
+
+    #[test]
+    fn test_domain_missing_routes_defaults_to_empty() {
+        let json = r#"{"name": "no-routes", "hosts": ["h.com"]}"#;
+        let domain: DomainConfig = serde_json::from_str(json).unwrap();
+        assert!(domain.routes.is_empty());
+    }
+
+    #[test]
+    fn test_cluster_defaults() {
+        let json = r#"{"name": "default-cluster"}"#;
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cluster.name, "default-cluster");
+        assert_eq!(cluster.lb_type, "roundrobin");
+        assert_eq!(cluster.scheme, "http");
+        assert_eq!(cluster.pass_host, "pass");
+        assert!(cluster.upstream_host.is_none());
+        assert!(cluster.nodes.is_empty());
+        assert!(cluster.discovery_type.is_none());
+        assert!(cluster.service_name.is_none());
+        assert!(cluster.discovery_args.is_none());
+        assert!(cluster.health_check.is_none());
+        assert!(cluster.retry.is_none());
+        assert!(cluster.circuit_breaker.is_none());
+        assert!(!cluster.tls_verify);
+        assert_eq!(cluster.timeout.connect, 6.0);
+        assert_eq!(cluster.timeout.send, 6.0);
+        assert_eq!(cluster.timeout.read, 6.0);
+        assert_eq!(cluster.keepalive_pool.idle_timeout, 60);
+        assert_eq!(cluster.keepalive_pool.requests, 1000);
+        assert_eq!(cluster.keepalive_pool.size, 320);
+    }
+
+    #[test]
+    fn test_cluster_with_discovery() {
+        let json = r#"{
+            "name": "consul-svc",
+            "discovery_type": "consul",
+            "service_name": "my-service",
+            "discovery_args": {
+                "metadata_match": {
+                    "namespace": ["prod", "canary"],
+                    "region": ["us-east-1"]
+                }
+            }
+        }"#;
+
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cluster.discovery_type, Some("consul".to_string()));
+        assert_eq!(cluster.service_name, Some("my-service".to_string()));
+        let args = cluster.discovery_args.as_ref().unwrap();
+        assert_eq!(args.metadata_match.len(), 2);
+        assert_eq!(args.metadata_match["namespace"], vec!["prod", "canary"]);
+        assert_eq!(args.metadata_match["region"], vec!["us-east-1"]);
+    }
+
+    #[test]
+    fn test_cluster_with_health_check() {
+        let json = r#"{
+            "name": "hc-cluster",
+            "health_check": {
+                "active": {
+                    "interval": 5,
+                    "path": "/healthz",
+                    "port": 8081,
+                    "healthy_statuses": [200, 204],
+                    "healthy_threshold": 2,
+                    "unhealthy_threshold": 5,
+                    "timeout": 2,
+                    "concurrency": 32
+                }
+            }
+        }"#;
+
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        let hc = cluster.health_check.unwrap();
+        let active = hc.active.unwrap();
+        assert_eq!(active.interval, 5);
+        assert_eq!(active.path, "/healthz");
+        assert_eq!(active.port, Some(8081));
+        assert_eq!(active.healthy_statuses, vec![200, 204]);
+        assert_eq!(active.healthy_threshold, 2);
+        assert_eq!(active.unhealthy_threshold, 5);
+        assert_eq!(active.timeout, 2);
+        assert_eq!(active.concurrency, 32);
+    }
+
+    #[test]
+    fn test_health_check_defaults() {
+        let json = r#"{
+            "name": "hc-defaults",
+            "health_check": { "active": {} }
+        }"#;
+
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        let active = cluster.health_check.unwrap().active.unwrap();
+        assert_eq!(active.interval, 10);
+        assert_eq!(active.path, "/health");
+        assert!(active.port.is_none());
+        assert_eq!(active.healthy_statuses, vec![200]);
+        assert_eq!(active.healthy_threshold, 3);
+        assert_eq!(active.unhealthy_threshold, 3);
+        assert_eq!(active.timeout, 3);
+        assert_eq!(active.concurrency, 64);
+    }
+
+    #[test]
+    fn test_cluster_with_retry() {
+        let json = r#"{
+            "name": "retry-cluster",
+            "retry": {
+                "count": 3,
+                "retry_on_statuses": [502, 503],
+                "retry_on_connect_failure": false,
+                "retry_on_timeout": true
+            }
+        }"#;
+
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        let retry = cluster.retry.unwrap();
+        assert_eq!(retry.count, 3);
+        assert_eq!(retry.retry_on_statuses, vec![502, 503]);
+        assert!(!retry.retry_on_connect_failure);
+        assert!(retry.retry_on_timeout);
+    }
+
+    #[test]
+    fn test_retry_defaults() {
+        let json = r#"{"count": 1}"#;
+        let retry: RetryConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(retry.count, 1);
+        assert_eq!(retry.retry_on_statuses, vec![502, 503, 504]);
+        assert!(retry.retry_on_connect_failure);
+        assert!(retry.retry_on_timeout);
+    }
+
+    #[test]
+    fn test_circuit_breaker_defaults() {
+        let json = r#"{}"#;
+        let cb: CircuitBreakerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cb.failure_threshold, 5);
+        assert_eq!(cb.success_threshold, 2);
+        assert_eq!(cb.open_duration_secs, 30);
+    }
+
+    #[test]
+    fn test_cluster_with_tls_verify() {
+        let json = r#"{"name": "tls", "scheme": "https", "tls_verify": true}"#;
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cluster.scheme, "https");
+        assert!(cluster.tls_verify);
+    }
+
+    #[test]
+    fn test_upstream_node_defaults() {
+        let json = r#"{"host": "10.0.0.1", "port": 8080}"#;
+        let node: UpstreamNode = serde_json::from_str(json).unwrap();
+        assert_eq!(node.host, "10.0.0.1");
+        assert_eq!(node.port, 8080);
+        assert_eq!(node.weight, 100);
+        assert!(node.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_upstream_node_with_metadata() {
+        let json = r#"{"host": "10.0.0.1", "port": 8080, "weight": 50, "metadata": {"env": "prod", "zone": "a"}}"#;
+        let node: UpstreamNode = serde_json::from_str(json).unwrap();
+        assert_eq!(node.weight, 50);
+        assert_eq!(node.metadata.len(), 2);
+        assert_eq!(node.metadata["env"], "prod");
+        assert_eq!(node.metadata["zone"], "a");
+    }
+
+    #[test]
+    fn test_null_methods_defaults_to_empty() {
+        let json = r#"{"uri": "/", "methods": null, "clusters": [{"name": "x"}]}"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.methods.is_empty());
+    }
+
+    #[test]
+    fn test_null_headers_defaults_to_empty() {
+        let json = r#"{"uri": "/", "headers": null, "clusters": [{"name": "x"}]}"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.headers.is_empty());
+    }
+
+    #[test]
+    fn test_null_nodes_defaults_to_empty() {
+        let json = r#"{"name": "c", "nodes": null}"#;
+        let cluster: ClusterConfig = serde_json::from_str(json).unwrap();
+        assert!(cluster.nodes.is_empty());
+    }
+
+    #[test]
+    fn test_null_request_transforms_defaults_to_empty() {
+        let json =
+            r#"{"uri": "/", "request_header_transforms": null, "clusters": [{"name": "x"}]}"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.request_header_transforms.is_empty());
+    }
+
+    #[test]
+    fn test_null_response_transforms_defaults_to_empty() {
+        let json =
+            r#"{"uri": "/", "response_header_transforms": null, "clusters": [{"name": "x"}]}"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.response_header_transforms.is_empty());
+    }
+
+    #[test]
+    fn test_header_matcher_all_types() {
+        for (match_type, invert) in &[
+            ("exact", false),
+            ("prefix", true),
+            ("regex", false),
+            ("present", false),
+        ] {
+            let json = format!(
+                r#"{{"name": "X-Test", "value": "v", "match_type": "{}", "invert": {}}}"#,
+                match_type, invert
+            );
+            let hm: HeaderMatcher = serde_json::from_str(&json).unwrap();
+            assert_eq!(hm.match_type, *match_type);
+            assert_eq!(hm.invert, *invert);
+        }
+    }
+
+    #[test]
+    fn test_header_transform_defaults() {
+        let json = r#"{"name": "X-Custom"}"#;
+        let ht: HeaderTransform = serde_json::from_str(json).unwrap();
+        assert_eq!(ht.name, "X-Custom");
+        assert_eq!(ht.value, "");
+        assert_eq!(ht.action, "set");
+    }
+
+    #[test]
+    fn test_header_transform_all_actions() {
+        for action in &["set", "add", "remove"] {
+            let json = format!(r#"{{"name": "H", "value": "V", "action": "{}"}}"#, action);
+            let ht: HeaderTransform = serde_json::from_str(&json).unwrap();
+            assert_eq!(ht.action, *action);
+        }
+    }
+
+    #[test]
+    fn test_rate_limit_defaults() {
+        let json = r#"{}"#;
+        let rl: RateLimitConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(rl.mode, "req");
+        assert_eq!(rl.key, "host_uri");
+        assert_eq!(rl.rejected_code, 429);
+        assert!(rl.rate.is_none());
+        assert!(rl.burst.is_none());
+        assert!(rl.count.is_none());
+        assert!(rl.time_window.is_none());
+    }
+
+    #[test]
+    fn test_rate_limit_count_mode() {
+        let json = r#"{"mode": "count", "count": 500, "time_window": 60, "key": "route"}"#;
+        let rl: RateLimitConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(rl.mode, "count");
+        assert_eq!(rl.count, Some(500));
+        assert_eq!(rl.time_window, Some(60));
+        assert_eq!(rl.key, "route");
+    }
+
+    #[test]
+    fn test_weighted_cluster_default_weight() {
+        let json = r#"{"name": "backend"}"#;
+        let wc: WeightedCluster = serde_json::from_str(json).unwrap();
+        assert_eq!(wc.name, "backend");
+        assert_eq!(wc.weight, 100);
+    }
+
+    #[test]
+    fn test_keepalive_pool_defaults() {
+        let kp = KeepalivePoolConfig::default();
+        assert_eq!(kp.idle_timeout, 60);
+        assert_eq!(kp.requests, 1000);
+        assert_eq!(kp.size, 320);
+    }
+
+    #[test]
+    fn test_keepalive_pool_custom() {
+        let json = r#"{"idle_timeout": 30, "requests": 500, "size": 64}"#;
+        let kp: KeepalivePoolConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(kp.idle_timeout, 30);
+        assert_eq!(kp.requests, 500);
+        assert_eq!(kp.size, 64);
+    }
+
+    #[test]
+    fn test_timeout_defaults() {
+        let tc = TimeoutConfig::default();
+        assert_eq!(tc.connect, 6.0);
+        assert_eq!(tc.send, 6.0);
+        assert_eq!(tc.read, 6.0);
+    }
+
+    #[test]
+    fn test_timeout_custom() {
+        let json = r#"{"connect": 1.5, "send": 3.0, "read": 10.0}"#;
+        let tc: TimeoutConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(tc.connect, 1.5);
+        assert_eq!(tc.send, 3.0);
+        assert_eq!(tc.read, 10.0);
+    }
+
+    #[test]
+    fn test_gateway_config_defaults() {
+        let cfg = GatewayConfig::default();
+        assert_eq!(cfg.consul.address, "http://127.0.0.1:8500");
+        assert_eq!(cfg.consul.poll_interval_secs, 10);
+        assert!(cfg.consul.datacenter.is_none());
+        assert!(cfg.consul.token.is_none());
+
+        assert_eq!(cfg.etcd.endpoints, vec!["http://127.0.0.1:2379"]);
+        assert_eq!(cfg.etcd.domain_prefix, "/hermes/domains");
+        assert_eq!(cfg.etcd.cluster_prefix, "/hermes/clusters");
+        assert!(cfg.etcd.meta_prefix.is_none());
+        assert!(cfg.etcd.username.is_none());
+        assert!(cfg.etcd.password.is_none());
+
+        assert!(!cfg.registration.enabled);
+        assert_eq!(cfg.registration.service_name, "hermes-gateway");
+        assert_eq!(cfg.registration.ttl_secs, 30);
+        assert_eq!(cfg.registration.deregister_after_secs, 60);
+        assert!(cfg.registration.metadata.is_empty());
+
+        assert!(!cfg.instance_registry.enabled);
+        assert_eq!(cfg.instance_registry.prefix, "/hermes/instances");
+        assert_eq!(cfg.instance_registry.lease_ttl_secs, 15);
+    }
+
+    #[test]
+    fn test_registration_config_full() {
+        let json = r#"{
+            "enabled": true,
+            "service_name": "my-gw",
+            "ttl_secs": 15,
+            "deregister_after_secs": 120,
+            "metadata": {"version": "1.0", "env": "prod"}
+        }"#;
+        let reg: RegistrationConfig = serde_json::from_str(json).unwrap();
+        assert!(reg.enabled);
+        assert_eq!(reg.service_name, "my-gw");
+        assert_eq!(reg.ttl_secs, 15);
+        assert_eq!(reg.deregister_after_secs, 120);
+        assert_eq!(reg.metadata.len(), 2);
+        assert_eq!(reg.metadata["version"], "1.0");
+    }
+
+    #[test]
+    fn test_instance_registry_config() {
+        let json = r#"{"enabled": true, "prefix": "/my/instances", "lease_ttl_secs": 30}"#;
+        let ir: InstanceRegistryConfig = serde_json::from_str(json).unwrap();
+        assert!(ir.enabled);
+        assert_eq!(ir.prefix, "/my/instances");
+        assert_eq!(ir.lease_ttl_secs, 30);
+    }
+
+    #[test]
+    fn test_cluster_roundtrip() {
+        let cluster = ClusterConfig {
+            name: "roundtrip".to_string(),
+            lb_type: "peak_ewma".to_string(),
+            scheme: "https".to_string(),
+            pass_host: "rewrite".to_string(),
+            upstream_host: Some("api.internal".to_string()),
+            tls_verify: true,
+            timeout: TimeoutConfig {
+                connect: 2.0,
+                send: 5.0,
+                read: 10.0,
+            },
+            nodes: vec![UpstreamNode {
+                host: "10.0.0.1".to_string(),
+                port: 8080,
+                weight: 50,
+                metadata: [("env".to_string(), "prod".to_string())]
+                    .into_iter()
+                    .collect(),
+            }],
+            keepalive_pool: KeepalivePoolConfig {
+                idle_timeout: 30,
+                requests: 500,
+                size: 64,
+            },
+            retry: Some(RetryConfig {
+                count: 3,
+                retry_on_statuses: vec![502, 503],
+                retry_on_connect_failure: true,
+                retry_on_timeout: false,
+            }),
+            circuit_breaker: Some(CircuitBreakerConfig {
+                failure_threshold: 10,
+                success_threshold: 3,
+                open_duration_secs: 60,
+            }),
+            ..ClusterConfig::default()
+        };
+
+        let serialized = serde_json::to_string(&cluster).unwrap();
+        let deserialized: ClusterConfig = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.name, "roundtrip");
+        assert_eq!(deserialized.lb_type, "peak_ewma");
+        assert_eq!(deserialized.scheme, "https");
+        assert!(deserialized.tls_verify);
+        assert_eq!(deserialized.nodes.len(), 1);
+        assert_eq!(deserialized.nodes[0].metadata["env"], "prod");
+        assert_eq!(deserialized.retry.unwrap().count, 3);
+        assert_eq!(deserialized.circuit_breaker.unwrap().failure_threshold, 10);
+    }
+
+    #[test]
+    fn test_consul_config_full() {
+        let json = r#"{
+            "address": "http://consul:8500",
+            "datacenter": "dc1",
+            "token": "secret",
+            "poll_interval_secs": 30
+        }"#;
+        let cc: ConsulConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cc.address, "http://consul:8500");
+        assert_eq!(cc.datacenter, Some("dc1".to_string()));
+        assert_eq!(cc.token, Some("secret".to_string()));
+        assert_eq!(cc.poll_interval_secs, 30);
+    }
+
+    #[test]
+    fn test_etcd_config_full() {
+        let json = r#"{
+            "endpoints": ["http://etcd1:2379", "http://etcd2:2379"],
+            "domain_prefix": "/custom/domains",
+            "cluster_prefix": "/custom/clusters",
+            "meta_prefix": "/custom/meta",
+            "username": "root",
+            "password": "pass"
+        }"#;
+        let ec: EtcdConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(ec.endpoints.len(), 2);
+        assert_eq!(ec.domain_prefix, "/custom/domains");
+        assert_eq!(ec.cluster_prefix, "/custom/clusters");
+        assert_eq!(ec.meta_prefix, Some("/custom/meta".to_string()));
+        assert_eq!(ec.username, Some("root".to_string()));
+        assert_eq!(ec.password, Some("pass".to_string()));
+    }
+
+    #[test]
+    fn test_health_check_no_active() {
+        let json = r#"{}"#;
+        let hc: HealthCheckConfig = serde_json::from_str(json).unwrap();
+        assert!(hc.active.is_none());
+    }
+
+    #[test]
+    fn test_route_with_plugins() {
+        let json = r#"{
+            "uri": "/",
+            "clusters": [{"name": "x"}],
+            "plugins": {"cors": {"enabled": true}}
+        }"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.plugins.is_some());
+        let plugins = route.plugins.unwrap();
+        assert!(plugins.get("cors").is_some());
+    }
+
+    #[test]
+    fn test_route_without_plugins() {
+        let json = r#"{"uri": "/", "clusters": [{"name": "x"}]}"#;
+        let route: RouteConfig = serde_json::from_str(json).unwrap();
+        assert!(route.plugins.is_none());
+    }
 }

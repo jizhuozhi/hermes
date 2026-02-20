@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,11 +18,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Mock Store ──────────────────────────────────────
-
-// mockStore implements store.Store for handler unit tests.
-// Only the methods used by tested handlers are implemented;
-// the rest panic with "not implemented".
 type mockStore struct {
 	domains    map[string]map[string]*model.DomainConfig // ns → name → config
 	clusters   map[string]map[string]*model.ClusterConfig
@@ -329,20 +325,16 @@ type notFoundError struct{ name string }
 
 func (e *notFoundError) Error() string { return e.name + " not found" }
 
-// ── Test Helpers ────────────────────────────────────
-
 func testLogger() *zap.SugaredLogger {
 	l, _ := zap.NewDevelopment()
 	return l.Sugar()
 }
 
-// withNamespace injects the given namespace into the request context.
 func withNamespace(r *http.Request, ns string) *http.Request {
 	ctx := context.WithValue(r.Context(), namespaceKey, ns)
 	return r.WithContext(ctx)
 }
 
-// setPathValue sets a Go 1.22+ path parameter value on the request.
 func setPathValue(r *http.Request, key, value string) {
 	r.SetPathValue(key, value)
 }
@@ -358,8 +350,6 @@ func jsonBody(v any) *bytes.Buffer {
 	b, _ := json.Marshal(v)
 	return bytes.NewBuffer(b)
 }
-
-// ── Domain Handler Tests ────────────────────────────
 
 func TestDomainHandler_CreateDomain(t *testing.T) {
 	ms := newMockStore()
@@ -546,8 +536,6 @@ func TestDomainHandler_DeleteDomain(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// ── Cluster Handler Tests ───────────────────────────
-
 func TestClusterHandler_CreateCluster(t *testing.T) {
 	ms := newMockStore()
 	h := NewClusterHandler(ms, testLogger())
@@ -651,8 +639,6 @@ func TestClusterHandler_DeleteCluster(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// ── Watch Handler Tests ─────────────────────────────
-
 func TestWatchHandler_GetRevision(t *testing.T) {
 	ms := newMockStore()
 	h := NewWatchHandler(ms, testLogger())
@@ -672,7 +658,6 @@ func TestWatchHandler_WatchConfig(t *testing.T) {
 	ms := newMockStore()
 	h := NewWatchHandler(ms, testLogger())
 
-	// Create some data to generate change events
 	d := &model.DomainConfig{Name: "api", Hosts: []string{"a.com"}}
 	ms.PutDomain(context.Background(), "default", d, "create", "test")
 
@@ -698,8 +683,6 @@ func TestWatchHandler_WatchConfig_InvalidRevision(t *testing.T) {
 	h.WatchConfig(w, r)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
-
-// ── Config Handler Tests ────────────────────────────
 
 func TestRouteHandler_GetConfig(t *testing.T) {
 	ms := newMockStore()
@@ -786,8 +769,6 @@ func TestRouteHandler_PutConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// ── Audit Handler Tests ─────────────────────────────
-
 func TestAuditHandler_ListAuditLog(t *testing.T) {
 	ms := newMockStore()
 	h := NewAuditHandler(ms, testLogger())
@@ -820,8 +801,6 @@ func TestAuditHandler_ListAuditLog_DefaultLimit(t *testing.T) {
 	assert.Equal(t, float64(50), resp["limit"])
 }
 
-// ── Status Handler Tests ────────────────────────────
-
 func TestStatusHandler_ReportAndGetController(t *testing.T) {
 	ms := newMockStore()
 	h := NewStatusHandler(ms, testLogger())
@@ -841,7 +820,6 @@ func TestStatusHandler_ReportAndGetController(t *testing.T) {
 	h.ReportController(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Now get it
 	r2 := httptest.NewRequest("GET", "/api/v1/status/controller", nil)
 	r2 = withNamespace(r2, "default")
 	w2 := httptest.NewRecorder()
@@ -871,7 +849,6 @@ func TestStatusHandler_ReportInstances(t *testing.T) {
 	h.ReportInstances(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// List them
 	r2 := httptest.NewRequest("GET", "/api/v1/status/instances", nil)
 	r2 = withNamespace(r2, "default")
 	w2 := httptest.NewRecorder()
@@ -892,8 +869,6 @@ func TestStatusHandler_AggregateStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// ── Credential Handler Tests ────────────────────────
-
 func TestCredentialHandler_CreateAndList(t *testing.T) {
 	ms := newMockStore()
 	h := NewCredentialHandler(ms, testLogger())
@@ -913,7 +888,6 @@ func TestCredentialHandler_CreateAndList(t *testing.T) {
 	assert.NotEmpty(t, resp["access_key"])
 	assert.NotEmpty(t, resp["secret_key"])
 
-	// List
 	r2 := httptest.NewRequest("GET", "/api/v1/credentials", nil)
 	r2 = withNamespace(r2, "default")
 	w2 := httptest.NewRecorder()
@@ -938,8 +912,6 @@ func TestCredentialHandler_CreateWithInvalidScope(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// ── Grafana Handler Tests ───────────────────────────
-
 func TestGrafanaHandler_CreateAndDelete(t *testing.T) {
 	ms := newMockStore()
 	h := NewGrafanaHandler(ms, testLogger())
@@ -958,7 +930,6 @@ func TestGrafanaHandler_CreateAndDelete(t *testing.T) {
 	resp := decodeResp(t, w)
 	assert.Equal(t, "Overview", resp["name"])
 
-	// Delete
 	r2 := httptest.NewRequest("DELETE", "/api/v1/grafana/dashboards/1", nil)
 	r2 = withNamespace(r2, "default")
 	setPathValue(r2, "id", "1")
@@ -980,8 +951,6 @@ func TestGrafanaHandler_PutDashboard_MissingFields(t *testing.T) {
 	h.PutDashboard(w, r)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
-
-// ── Middleware Tests ─────────────────────────────────
 
 func TestNamespaceMiddleware_Default(t *testing.T) {
 	var capturedNS string
@@ -1110,8 +1079,6 @@ func TestRecovery_WithPanic(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-// ── Identity Tests ──────────────────────────────────
-
 func TestIdentity_HasScope(t *testing.T) {
 	id := &Identity{Scopes: []string{"config:read", "config:write"}}
 	assert.True(t, id.HasScope("config:read"))
@@ -1124,14 +1091,10 @@ func TestIdentityFromContext_Nil(t *testing.T) {
 	assert.Nil(t, IdentityFromContext(ctx))
 }
 
-// ── Operator Tests ──────────────────────────────────
-
 func TestOperator_NoAuth(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	assert.Empty(t, Operator(r))
 }
-
-// ── parseHMACAuthHeader Tests ───────────────────────
 
 func TestParseHMACAuthHeader_Valid(t *testing.T) {
 	ak, sig, err := parseHMACAuthHeader("HMAC-SHA256 Credential=ak123,Signature=sig456")
@@ -1147,5 +1110,199 @@ func TestParseHMACAuthHeader_Invalid(t *testing.T) {
 
 func TestParseHMACAuthHeader_MissingFields(t *testing.T) {
 	_, _, err := parseHMACAuthHeader("HMAC-SHA256 Credential=ak123")
+	assert.Error(t, err)
+}
+
+func TestJSON_WritesCorrectContentType(t *testing.T) {
+	w := httptest.NewRecorder()
+	JSON(w, http.StatusOK, map[string]string{"key": "value"})
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+	assert.Equal(t, "value", body["key"])
+}
+
+func TestErrJSON_WritesErrorFormat(t *testing.T) {
+	w := httptest.NewRecorder()
+	ErrJSON(w, http.StatusBadRequest, "bad input")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+	assert.Equal(t, "bad input", body["error"])
+}
+
+func TestDecodeJSON(t *testing.T) {
+	body := bytes.NewBufferString(`{"name": "test"}`)
+	r := httptest.NewRequest("POST", "/", body)
+
+	var v struct{ Name string }
+	err := DecodeJSON(r, &v)
+	require.NoError(t, err)
+	assert.Equal(t, "test", v.Name)
+}
+
+func TestDecodeJSON_InvalidJSON(t *testing.T) {
+	body := bytes.NewBufferString(`not json`)
+	r := httptest.NewRequest("POST", "/", body)
+
+	var v struct{ Name string }
+	err := DecodeJSON(r, &v)
+	assert.Error(t, err)
+}
+
+func TestReadBody(t *testing.T) {
+	body := bytes.NewBufferString("hello body")
+	r := httptest.NewRequest("POST", "/", body)
+
+	data, err := ReadBody(r)
+	require.NoError(t, err)
+	assert.Equal(t, "hello body", string(data))
+}
+
+func TestOperator_FromBearerJWT(t *testing.T) {
+	// Build a fake JWT with payload
+	payload := `{"preferred_username":"alice","email":"alice@example.com","sub":"user-123"}`
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	token := "eyJhbGciOiJSUzI1NiJ9." + encoded + ".fakesig"
+
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+
+	assert.Equal(t, "alice", Operator(r))
+}
+
+func TestOperator_FromBearerJWT_EmailFallback(t *testing.T) {
+	payload := `{"email":"bob@example.com","sub":"user-456"}`
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	token := "eyJhbGciOiJSUzI1NiJ9." + encoded + ".fakesig"
+
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+
+	assert.Equal(t, "bob@example.com", Operator(r))
+}
+
+func TestOperator_FromBearerJWT_SubFallback(t *testing.T) {
+	payload := `{"sub":"user-789"}`
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	token := "eyJhbGciOiJSUzI1NiJ9." + encoded + ".fakesig"
+
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+
+	assert.Equal(t, "user-789", Operator(r))
+}
+
+func TestOperator_InvalidJWT(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "Bearer not.valid")
+
+	assert.Empty(t, Operator(r))
+}
+
+func TestOperator_NonBearerAuth(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Authorization", "HMAC-SHA256 stuff")
+
+	assert.Empty(t, Operator(r))
+}
+
+func TestComputeHMACSHA256(t *testing.T) {
+	sig := computeHMACSHA256("secret", "message")
+	assert.NotEmpty(t, sig)
+	assert.Len(t, sig, 64) // SHA256 hex = 64 chars
+
+	sig2 := computeHMACSHA256("secret", "message")
+	assert.Equal(t, sig, sig2)
+
+	sig3 := computeHMACSHA256("other", "message")
+	assert.NotEqual(t, sig, sig3)
+}
+
+func TestSha256Hex(t *testing.T) {
+	h := sha256Hex([]byte("test"))
+	assert.Len(t, h, 64)
+
+	h2 := sha256Hex([]byte{})
+	assert.Len(t, h2, 64)
+	assert.NotEqual(t, h, h2)
+}
+
+func TestWrap_ChainsMiddleware(t *testing.T) {
+	var order []string
+	mw1 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "mw1")
+			next.ServeHTTP(w, r)
+		})
+	}
+	mw2 := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "mw2")
+			next.ServeHTTP(w, r)
+		})
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "handler")
+	})
+
+	h := Wrap(handler, mw1, mw2)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+
+	assert.Equal(t, []string{"mw1", "mw2", "handler"}, order)
+}
+
+func TestWrapFunc(t *testing.T) {
+	called := false
+	fn := func(w http.ResponseWriter, r *http.Request) { called = true }
+	h := WrapFunc(fn)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	assert.True(t, called)
+}
+
+func TestCORS_Preflight(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called for OPTIONS")
+	})
+
+	h := CORS(handler)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("OPTIONS", "/api/v1/domains", nil)
+	h.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Contains(t, w.Header().Get("Access-Control-Allow-Methods"), "GET")
+	assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "Authorization")
+}
+
+func TestCORS_PassThrough(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := CORS(handler)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/v1/domains", nil)
+	h.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestParseHMACAuthHeader_ExtraWhitespace(t *testing.T) {
+	ak, sig, err := parseHMACAuthHeader("HMAC-SHA256  Credential=ak , Signature=sig ")
+	require.NoError(t, err)
+	assert.Equal(t, "ak", ak)
+	assert.Equal(t, "sig", sig)
+}
+
+func TestParseHMACAuthHeader_EmptyString(t *testing.T) {
+	_, _, err := parseHMACAuthHeader("")
 	assert.Error(t, err)
 }

@@ -19,8 +19,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ─── Built-in Auth Handler (username/password login + self-signed JWT) ─────
-
+// Built-in Auth Handler (username/password login + self-signed JWT)
 // BuiltinAuthHandler handles username/password authentication without an
 // external OIDC provider. It issues self-signed JWTs (HMAC-SHA256) that
 // are verified by the same Authenticate middleware.

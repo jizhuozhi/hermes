@@ -20,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Context keys ─────────────────────────────────────────────────────
+// Context keys
 // Uses unexported struct types as context keys to guarantee uniqueness
 // across packages — no risk of collision with int-based keys.
 
@@ -32,7 +32,7 @@ var (
 	namespaceKey = namespaceKeyType{}
 )
 
-// ── Identity: unified caller identity (OIDC user or HMAC credential) ─
+// Identity: unified caller identity (OIDC user or HMAC credential)
 
 // Identity is the unified representation of "who is calling".
 // Populated by the Authenticate middleware regardless of auth method.
@@ -76,8 +76,7 @@ func NamespaceFromContext(ctx context.Context) string {
 	return ns
 }
 
-// ── Namespace Middleware ──────────────────────────────────────────────
-
+// Namespace Middleware
 // NamespaceMiddleware extracts the namespace from the X-Hermes-Namespace header
 // (or ?namespace= query param for web UI) and injects it into context.
 func NamespaceMiddleware(next http.Handler) http.Handler {
@@ -94,7 +93,7 @@ func NamespaceMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// ── Unified Authenticate Middleware ──────────────────────────────────
+// Unified Authenticate Middleware
 //
 // Authenticate inspects the Authorization header and resolves a unified Identity:
 //   - "Bearer <jwt>"       → OIDC path: verify JWT, resolve role→scopes
@@ -113,7 +112,7 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 
 			switch {
 			case strings.HasPrefix(authHeader, "Bearer "):
-				// ── OIDC Bearer token ──
+				// OIDC Bearer token
 				identity, err := authenticateOIDC(r.Context(), s, oidcVerifier, authHeader, ns)
 				if err != nil {
 					logger.Debugf("OIDC auth failed: %v", err)
@@ -124,7 +123,7 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 				next.ServeHTTP(w, r.WithContext(ctx))
 
 			case strings.HasPrefix(authHeader, "HMAC-SHA256 "):
-				// ── HMAC credential ──
+				// HMAC credential
 				identity, err := authenticateHMAC(r, s, logger, ns)
 				if err != nil {
 					ErrJSON(w, http.StatusUnauthorized, err.Error())
@@ -282,8 +281,7 @@ func resolveEffectiveRole(ctx context.Context, s store.Store, ns string, claims 
 	return role
 }
 
-// ── Scope-based Authorization ────────────────────────────────────────
-
+// Scope-based Authorization
 // RequireScope returns a middleware that checks the caller has the given scope.
 // Must be applied AFTER Authenticate + NamespaceMiddleware.
 func RequireScope(scope string) func(http.Handler) http.Handler {
@@ -304,8 +302,7 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 	}
 }
 
-// ── Global Middleware ─────────────────────────────────────────────────
-
+// Global Middleware
 // CORS wraps a handler with permissive CORS headers.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -335,8 +332,7 @@ func Recovery(logger *zap.SugaredLogger, next http.Handler) http.Handler {
 	})
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────
-
+// Helpers
 // Wrap applies a chain of middleware wrappers to a handler.
 func Wrap(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(mws) - 1; i >= 0; i-- {

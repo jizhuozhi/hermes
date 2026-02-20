@@ -48,8 +48,7 @@ func (s *PgStore) Close() {
 	s.db.Close()
 }
 
-// ── Schema migration ────────────────────────────
-
+// Schema migration
 func (s *PgStore) migrate(ctx context.Context) error {
 	ddl := `
 -- ── Namespaces ───────────────────────────────────
@@ -204,8 +203,7 @@ CREATE INDEX IF NOT EXISTS idx_jwt_keys_status ON jwt_signing_keys(status);
 	return nil
 }
 
-// ── Domain CRUD ─────────────────────────────────
-
+// Domain CRUD
 func (s *PgStore) ListDomains(ctx context.Context, ns string) ([]model.DomainConfig, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT config FROM domains WHERE namespace = $1 ORDER BY name`, ns)
 	if err != nil {
@@ -343,8 +341,7 @@ func (s *PgStore) DeleteDomain(ctx context.Context, ns, name, operator string) (
 	return version, nil
 }
 
-// ── Cluster CRUD ────────────────────────────────
-
+// Cluster CRUD
 func (s *PgStore) ListClusters(ctx context.Context, ns string) ([]model.ClusterConfig, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT config FROM clusters WHERE namespace = $1 ORDER BY name`, ns)
 	if err != nil {
@@ -482,8 +479,7 @@ func (s *PgStore) DeleteCluster(ctx context.Context, ns, name, operator string) 
 	return version, nil
 }
 
-// ── Bulk operations ─────────────────────────────
-
+// Bulk operations
 func (s *PgStore) PutAllConfig(ctx context.Context, ns string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -581,8 +577,7 @@ func (s *PgStore) GetConfig(ctx context.Context, ns string) (*model.GatewayConfi
 	return &model.GatewayConfig{Domains: domains, Clusters: clusters}, nil
 }
 
-// ── Per-domain History ──────────────────────────
-
+// Per-domain History
 func (s *PgStore) GetDomainHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error) {
 	return s.getHistory(ctx, ns, "domain", name)
 }
@@ -605,8 +600,7 @@ func (s *PgStore) RollbackDomain(ctx context.Context, ns, name string, version i
 	return s.PutDomain(ctx, ns, entry.Domain, "rollback", operator)
 }
 
-// ── Per-cluster History ─────────────────────────
-
+// Per-cluster History
 func (s *PgStore) GetClusterHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error) {
 	return s.getHistory(ctx, ns, "cluster", name)
 }
@@ -629,8 +623,7 @@ func (s *PgStore) RollbackCluster(ctx context.Context, ns, name string, version 
 	return s.PutCluster(ctx, ns, entry.Cluster, "rollback", operator)
 }
 
-// ── Watch (long-poll for controller) ────────────
-
+// Watch (long-poll for controller)
 func (s *PgStore) CurrentRevision(ctx context.Context, ns string) (int64, error) {
 	var rev sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `SELECT MAX(revision) FROM change_log WHERE namespace = $1`, ns).Scan(&rev)
@@ -687,8 +680,7 @@ func (s *PgStore) queryChanges(ctx context.Context, ns string, sinceRevision int
 	return events, maxRev, rows.Err()
 }
 
-// ── Namespaces ──────────────────────────────────
-
+// Namespaces
 // ListNamespaces returns all registered namespaces.
 func (s *PgStore) ListNamespaces(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
@@ -719,8 +711,7 @@ func (s *PgStore) CreateNamespace(ctx context.Context, name string) error {
 	return nil
 }
 
-// ── Shared helpers ──────────────────────────────
-
+// Shared helpers
 func (s *PgStore) nextVersion(ctx context.Context, tx *sql.Tx, ns, kind, name string) (int64, error) {
 	return s.nextVersionTx(ctx, tx, ns, kind, name)
 }
@@ -805,8 +796,7 @@ func (s *PgStore) getVersion(ctx context.Context, ns, kind, name string, version
 	return &e, nil
 }
 
-// ── Audit log (global change event stream) ──────
-
+// Audit log (global change event stream)
 func (s *PgStore) ListAuditLog(ctx context.Context, ns string, limit, offset int) ([]AuditEntry, int64, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -860,8 +850,7 @@ func (s *PgStore) pruneHistory(ctx context.Context, ns, kind, name string) {
 	}
 }
 
-// ── Status (namespace-scoped) ────────────────────
-
+// Status (namespace-scoped)
 func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instances []GatewayInstanceStatus) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -965,8 +954,7 @@ func (s *PgStore) GetControllerStatus(ctx context.Context, ns string) (*Controll
 	return &ctrl, nil
 }
 
-// ── Stale reaper (idempotent, lock-free) ─────────
-
+// Stale reaper (idempotent, lock-free)
 // MarkStaleInstances marks gateway instances as "offline" whose updated_at is
 // older than now()-threshold. Uses RETURNING to report exactly which rows changed.
 // Idempotent: concurrent calls from multiple replicas are safe — the first one
@@ -1017,8 +1005,7 @@ func (s *PgStore) MarkStaleControllers(ctx context.Context, threshold time.Durat
 	return result, rows.Err()
 }
 
-// ── Grafana dashboards (namespace-scoped) ────────
-
+// Grafana dashboards (namespace-scoped)
 func (s *PgStore) ListGrafanaDashboards(ctx context.Context, ns string) ([]GrafanaDashboard, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, url FROM grafana_dashboards WHERE namespace = $1 ORDER BY id`, ns)
@@ -1072,8 +1059,7 @@ func (s *PgStore) DeleteGrafanaDashboard(ctx context.Context, ns string, id int6
 	return nil
 }
 
-// ── API Credentials (namespace-scoped, AK globally unique) ──
-
+// API Credentials (namespace-scoped, AK globally unique)
 func (s *PgStore) ListAPICredentials(ctx context.Context, ns string) ([]APICredential, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, namespace, access_key, description, scopes, enabled, created_at, updated_at
@@ -1160,8 +1146,7 @@ func (s *PgStore) DeleteAPICredential(ctx context.Context, ns string, id int64) 
 	return nil
 }
 
-// ── Users (OIDC-synced) ──────────────────────────
-
+// Users (OIDC-synced)
 func (s *PgStore) UpsertUser(ctx context.Context, user *User) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1294,8 +1279,7 @@ func (s *PgStore) DeleteUser(ctx context.Context, sub string) error {
 	return nil
 }
 
-// ── JWT Signing Keys ─────────────────────────────
-
+// JWT Signing Keys
 func (s *PgStore) GetActiveSigningKey(ctx context.Context) (*JWTSigningKey, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1432,8 +1416,7 @@ func generateKeyID() string {
 	return fmt.Sprintf("k-%x", b)
 }
 
-// ── Namespace Members ────────────────────────────
-
+// Namespace Members
 func (s *PgStore) ListNamespaceMembers(ctx context.Context, ns string) ([]NamespaceMember, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.namespace, m.user_sub, m.role, u.username, u.email, u.name
@@ -1499,7 +1482,7 @@ func (s *PgStore) RemoveNamespaceMember(ctx context.Context, ns, userSub string)
 	return nil
 }
 
-// ── Group Bindings (OIDC group → namespace role) ─
+// Group Bindings (OIDC group → namespace role)
 
 func (s *PgStore) ListGroupBindings(ctx context.Context, ns string) ([]GroupBinding, error) {
 	rows, err := s.db.QueryContext(ctx,

@@ -53,7 +53,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 
 	base := srv.baseURL
 
-	// ── Create config via API ──
+	// Create config via API
 	resp := apiPost(t, base, "/api/v1/domains", domainConfig{
 		Name:  "web",
 		Hosts: []string{"web.example.com"},
@@ -88,7 +88,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Start controller ──
+	// Start controller
 	ctrl := startControllerProc(t, ctrlBin, controllerOpts{
 		cpURL:             base,
 		etcdEndpoint:      etcdEndpoint,
@@ -97,7 +97,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 	})
 	defer ctrl.stop()
 
-	// ── Verify initial sync ──
+	// Verify initial sync
 	waitForEtcdCount(t, etcdClient, "/hermes/domains/", 2, 15*time.Second)
 	waitForEtcdCount(t, etcdClient, "/hermes/clusters/", 2, 15*time.Second)
 
@@ -121,7 +121,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 	assert.True(t, clusterNames["web-be"])
 	assert.True(t, clusterNames["api-be"])
 
-	// ── Incremental: delete + add ──
+	// Incremental: delete + add
 	resp = apiDelete(t, base, "/api/v1/domains/api")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
@@ -145,7 +145,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 	assert.True(t, names["admin"])
 	assert.False(t, names["api"])
 
-	// ── Incremental: add new cluster ──
+	// Incremental: add new cluster
 	resp = apiPost(t, base, "/api/v1/clusters", clusterConfig{
 		Name: "new-cluster", LBType: "roundrobin", Timeout: timeoutConfig{Connect: 1, Send: 2, Read: 2},
 		Nodes: []upstreamNode{{Host: "10.0.0.3", Port: 8080, Weight: 100}},
@@ -155,7 +155,7 @@ func TestE2E_Sync_BasicCRUDToEtcd(t *testing.T) {
 
 	waitForEtcdKey(t, etcdClient, "/hermes/clusters/new-cluster", 15*time.Second)
 
-	// ── Verify revision is published ──
+	// Verify revision is published
 	waitForEtcdKey(t, etcdClient, "/hermes/meta/config_revision", 15*time.Second)
 }
 
@@ -180,7 +180,7 @@ func TestE2E_Sync_AuthenticatedPipeline(t *testing.T) {
 
 	base := srv.baseURL
 
-	// ── Bootstrap credentials ──
+	// Bootstrap credentials
 	resp := apiPost(t, base, "/api/v1/credentials", map[string]any{
 		"description": "admin",
 		"scopes":      []string{"config:read", "config:write", "credential:read", "credential:write", "audit:read"},
@@ -205,7 +205,7 @@ func TestE2E_Sync_AuthenticatedPipeline(t *testing.T) {
 	ctrlAK := ctrlCred["access_key"].(string)
 	ctrlSK := ctrlCred["secret_key"].(string)
 
-	// ── Create config via HMAC ──
+	// Create config via HMAC
 	resp = hmacRequest(t, "POST", base+"/api/v1/domains", adminAK, adminSK, domainConfig{
 		Name: "web", Hosts: []string{"web.example.com"},
 		Routes: []routeConfig{{Name: "all", URI: "/*", Clusters: []weightedCluster{{Name: "web-be", Weight: 100}}, Status: 1}},
@@ -220,7 +220,7 @@ func TestE2E_Sync_AuthenticatedPipeline(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Start controller with HMAC ──
+	// Start controller with HMAC
 	ctrl := startControllerProc(t, ctrlBin, controllerOpts{
 		cpURL: base, etcdEndpoint: etcdEndpoint,
 		accessKey: ctrlAK, secretKey: ctrlSK,
@@ -240,7 +240,7 @@ func TestE2E_Sync_AuthenticatedPipeline(t *testing.T) {
 		assert.NotNil(t, cfg["routes"])
 	}
 
-	// ── Incremental: add + delete via HMAC ──
+	// Incremental: add + delete via HMAC
 	resp = hmacRequest(t, "POST", base+"/api/v1/domains", adminAK, adminSK, domainConfig{
 		Name: "api", Hosts: []string{"api.example.com"},
 		Routes: []routeConfig{{Name: "all", URI: "/*", Clusters: []weightedCluster{{Name: "web-be", Weight: 100}}, Status: 1}},
@@ -350,7 +350,7 @@ func TestE2E_Sync_ConfigDriftCorrection(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// ── Pollute etcd with drift ──
+	// Pollute etcd with drift
 	// 1. Dirty key: exists in etcd but NOT in server (should be deleted)
 	_, err := etcdClient.Put(ctx, "/hermes/domains/dirty-domain", `{"name":"dirty-domain","hosts":["dirty.example.com"],"routes":[]}`)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestE2E_Sync_ConfigDriftCorrection(t *testing.T) {
 	orphanResp, _ := etcdClient.Get(ctx, "/hermes/clusters/orphan-cluster")
 	assert.Equal(t, 1, int(orphanResp.Count), "orphan key should exist before reconcile")
 
-	// ── Start controller (will reconcile on startup) ──
+	// Start controller (will reconcile on startup)
 	ctrl := startControllerProc(t, ctrlBin, controllerOpts{
 		cpURL:             base,
 		etcdEndpoint:      etcdEndpoint,
