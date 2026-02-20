@@ -22,8 +22,8 @@ func NewRouteHandler(s store.Store, logger *zap.SugaredLogger) *RouteHandler {
 }
 
 func (h *RouteHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
-	cfg, err := h.store.GetConfig(r.Context(), ns)
+	region := RegionFromContext(r.Context())
+	cfg, err := h.store.GetConfig(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -33,7 +33,7 @@ func (h *RouteHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RouteHandler) PutConfig(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	var cfg model.GatewayConfig
 	if err := DecodeJSON(r, &cfg); err != nil {
 		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
@@ -45,7 +45,7 @@ func (h *RouteHandler) PutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.store.PutAllConfig(r.Context(), ns, cfg.Domains, cfg.Clusters, Operator(r))
+	_, err := h.store.PutAllConfig(r.Context(), region, cfg.Domains, cfg.Clusters, Operator(r))
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return

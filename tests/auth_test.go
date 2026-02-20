@@ -15,7 +15,7 @@ import (
 //  Server Auth, Audit & RBAC Tests
 //
 //  These tests exercise the server's authentication, authorization,
-//  audit logging, member/group management, namespace management, and
+//  audit logging, member/group management, region management, and
 //  user admin capabilities. All tests are pure black-box: the server
 //  runs as a compiled binary, and tests interact only via HTTP.
 // ══════════════════════════════════════════════════════════════════════
@@ -454,9 +454,9 @@ func TestE2E_Auth_AuditTrail(t *testing.T) {
 	assert.True(t, total > 0, "audit log should have entries")
 }
 
-// Namespace-Scoped Credentials
-// TestE2E_Auth_NamespaceScopedCredentials verifies credentials are namespace-scoped.
-func TestE2E_Auth_NamespaceScopedCredentials(t *testing.T) {
+// Region-Scoped Credentials
+// TestE2E_Auth_RegionScopedCredentials verifies credentials are region-scoped.
+func TestE2E_Auth_RegionScopedCredentials(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -472,8 +472,8 @@ func TestE2E_Auth_NamespaceScopedCredentials(t *testing.T) {
 
 	base := srv.baseURL
 
-	// Create namespace via API (bootstrap mode)
-	resp := apiPost(t, base, "/api/v1/namespaces", map[string]any{"name": "staging"})
+	// Create region via API (bootstrap mode)
+	resp := apiPost(t, base, "/api/v1/regions", map[string]any{"name": "staging"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
@@ -649,7 +649,7 @@ func TestE2E_Auth_MemberValidation(t *testing.T) {
 }
 
 // Group Bindings
-// TestE2E_Auth_GroupBindings tests OIDC group → namespace role bindings.
+// TestE2E_Auth_GroupBindings tests OIDC group → region role bindings.
 func TestE2E_Auth_GroupBindings(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -841,9 +841,9 @@ func TestE2E_Auth_AdminUserManagement(t *testing.T) {
 	resp.Body.Close()
 }
 
-// Namespace Management
-// TestE2E_Auth_NamespaceManagement tests namespace CRUD with scope enforcement.
-func TestE2E_Auth_NamespaceManagement(t *testing.T) {
+// Region Management
+// TestE2E_Auth_RegionManagement tests region CRUD with scope enforcement.
+func TestE2E_Auth_RegionManagement(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -860,7 +860,7 @@ func TestE2E_Auth_NamespaceManagement(t *testing.T) {
 	base := srv.baseURL
 
 	resp := apiPost(t, base, "/api/v1/credentials", map[string]any{
-		"description": "ns-admin", "scopes": []string{"namespace:read", "namespace:write", "credential:write"},
+		"description": "ns-admin", "scopes": []string{"region:read", "region:write", "credential:write"},
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	cred := readJSON(t, resp)
@@ -876,40 +876,40 @@ func TestE2E_Auth_NamespaceManagement(t *testing.T) {
 	noNsAK := cred2["access_key"].(string)
 	noNsSK := cred2["secret_key"].(string)
 
-	// List namespaces
-	resp = hmacRequest(t, "GET", base+"/api/v1/namespaces", ak, sk, nil)
+	// List regions
+	resp = hmacRequest(t, "GET", base+"/api/v1/regions", ak, sk, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	data := readJSON(t, resp)
-	nsList := data["namespaces"].([]any)
+	regionList := data["regions"].([]any)
 	assert.Contains(t, nsList, "default")
 
-	// Create namespace
-	resp = hmacRequest(t, "POST", base+"/api/v1/namespaces", ak, sk, map[string]any{
+	// Create region
+	resp = hmacRequest(t, "POST", base+"/api/v1/regions", ak, sk, map[string]any{
 		"name": "test-ns",
 	})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
 	// Duplicate → 409
-	resp = hmacRequest(t, "POST", base+"/api/v1/namespaces", ak, sk, map[string]any{
+	resp = hmacRequest(t, "POST", base+"/api/v1/regions", ak, sk, map[string]any{
 		"name": "test-ns",
 	})
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	resp.Body.Close()
 
 	// Invalid name → 400
-	resp = hmacRequest(t, "POST", base+"/api/v1/namespaces", ak, sk, map[string]any{
+	resp = hmacRequest(t, "POST", base+"/api/v1/regions", ak, sk, map[string]any{
 		"name": "INVALID_NS",
 	})
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
 	// Without scope → 403
-	resp = hmacRequest(t, "GET", base+"/api/v1/namespaces", noNsAK, noNsSK, nil)
+	resp = hmacRequest(t, "GET", base+"/api/v1/regions", noNsAK, noNsSK, nil)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	resp.Body.Close()
 
-	resp = hmacRequest(t, "POST", base+"/api/v1/namespaces", noNsAK, noNsSK, map[string]any{
+	resp = hmacRequest(t, "POST", base+"/api/v1/regions", noNsAK, noNsSK, map[string]any{
 		"name": "forbidden-ns",
 	})
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
@@ -1058,9 +1058,9 @@ func TestE2E_OIDC_BearerAuthentication(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "alice",
 	})
 	defer srv.stop()
@@ -1172,9 +1172,9 @@ func TestE2E_OIDC_InitialAdminUser(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "admin-alice,admin-bob@example.com",
 	})
 	defer srv.stop()
@@ -1197,8 +1197,8 @@ func TestE2E_OIDC_InitialAdminUser(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
-	// Admin should be able to manage namespaces.
-	resp = bearerRequest(t, "GET", base+"/api/v1/namespaces", adminToken, nil)
+	// Admin should be able to manage regions.
+	resp = bearerRequest(t, "GET", base+"/api/v1/regions", adminToken, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
 
@@ -1279,7 +1279,7 @@ func TestE2E_OIDC_Userinfo(t *testing.T) {
 
 // Group Binding RBAC
 // TestE2E_OIDC_GroupBindingRBAC verifies that OIDC groups are resolved to
-// namespace roles via group bindings, granting the correct scopes.
+// region roles via group bindings, granting the correct scopes.
 func TestE2E_OIDC_GroupBindingRBAC(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -1294,9 +1294,9 @@ func TestE2E_OIDC_GroupBindingRBAC(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "setup-admin",
 	})
 	defer srv.stop()
@@ -1483,9 +1483,9 @@ func TestE2E_OIDC_WhoAmI(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "whoami-oidc",
 	})
 	defer srv.stop()
@@ -1511,7 +1511,7 @@ func TestE2E_OIDC_WhoAmI(t *testing.T) {
 
 // Direct Member Assignment
 // TestE2E_OIDC_DirectMemberRole verifies that a direct member assignment
-// (via SetNamespaceMember) gives the user the correct scopes,
+// (via SetRegionMember) gives the user the correct scopes,
 // and that direct assignment takes precedence over a lower group binding.
 func TestE2E_OIDC_DirectMemberRole(t *testing.T) {
 	if testing.Short() {
@@ -1527,9 +1527,9 @@ func TestE2E_OIDC_DirectMemberRole(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "direct-admin",
 	})
 	defer srv.stop()
@@ -1608,9 +1608,9 @@ func TestE2E_OIDC_HMACCoexistence(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		oidcEnabled:      true, oidcIssuer: oidcProvider.IssuerURL(),
-		oidcClientID:     oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
+		pgDSN:       pgDSN,
+		oidcEnabled: true, oidcIssuer: oidcProvider.IssuerURL(),
+		oidcClientID: oidcProvider.ClientID, oidcClientSecret: oidcProvider.ClientSecret,
 		initialAdminUsers: "coexist-admin",
 	})
 	defer srv.stop()
@@ -1689,8 +1689,8 @@ func TestE2E_Builtin_LoginAndAccess(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})
@@ -1750,8 +1750,8 @@ func TestE2E_Builtin_KeyRotation(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})
@@ -1825,8 +1825,8 @@ func TestE2E_Builtin_TokenSurvivesRestart(t *testing.T) {
 
 	// Start server and login.
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})
@@ -1847,8 +1847,8 @@ func TestE2E_Builtin_TokenSurvivesRestart(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	srv2 := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})
@@ -1874,8 +1874,8 @@ func TestE2E_Builtin_ChangePassword(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})
@@ -1928,8 +1928,8 @@ func TestE2E_Builtin_HMACCoexistence(t *testing.T) {
 	defer cleanupPG()
 
 	srv := startServerProc(t, srvBin, serverOpts{
-		pgDSN:            pgDSN,
-		builtinAuth:      true,
+		pgDSN:             pgDSN,
+		builtinAuth:       true,
 		builtinAdminEmail: "admin@hermes.local",
 		builtinAdminPass:  "admin123",
 	})

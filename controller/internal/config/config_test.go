@@ -16,7 +16,7 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:9080", cfg.ControlPlane.URL)
 	assert.Equal(t, 5, cfg.ControlPlane.PollInterval)
 	assert.Equal(t, 60, cfg.ControlPlane.ReconcileInterval)
-	assert.Equal(t, "default", cfg.ControlPlane.Namespace)
+	assert.Equal(t, "default", cfg.ControlPlane.Region)
 	assert.Equal(t, []string{"http://127.0.0.1:2379"}, cfg.Etcd.Endpoints)
 	assert.Equal(t, "/hermes/domains", cfg.Etcd.DomainPrefix)
 	assert.Equal(t, "/hermes/clusters", cfg.Etcd.ClusterPrefix)
@@ -35,7 +35,7 @@ controlplane:
   url: "http://cp:9080"
   poll_interval: 10
   reconcile_interval: 120
-  namespace: "staging"
+  region: "staging"
 etcd:
   endpoints:
     - "http://etcd1:2379"
@@ -63,7 +63,7 @@ election:
 	assert.Equal(t, "http://cp:9080", cfg.ControlPlane.URL)
 	assert.Equal(t, 10, cfg.ControlPlane.PollInterval)
 	assert.Equal(t, 120, cfg.ControlPlane.ReconcileInterval)
-	assert.Equal(t, "staging", cfg.ControlPlane.Namespace)
+	assert.Equal(t, "staging", cfg.ControlPlane.Region)
 	assert.Equal(t, []string{"http://etcd1:2379", "http://etcd2:2379"}, cfg.Etcd.Endpoints)
 	assert.Equal(t, "/custom/domains", cfg.Etcd.DomainPrefix)
 	assert.Equal(t, "root", cfg.Etcd.Username)
@@ -88,7 +88,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 		"HERMES_CONTROLPLANE_URL":                "http://override:9080",
 		"HERMES_CONTROLPLANE_POLL_INTERVAL":      "30",
 		"HERMES_CONTROLPLANE_RECONCILE_INTERVAL": "300",
-		"HERMES_CONTROLPLANE_NAMESPACE":          "production",
+		"HERMES_CONTROLPLANE_REGION":             "production",
 		"HERMES_ETCD_ENDPOINTS":                  "http://e1:2379,http://e2:2379",
 		"HERMES_ETCD_DOMAIN_PREFIX":              "/env/domains",
 		"HERMES_ETCD_CLUSTER_PREFIX":             "/env/clusters",
@@ -113,7 +113,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	assert.Equal(t, "http://override:9080", cfg.ControlPlane.URL)
 	assert.Equal(t, 30, cfg.ControlPlane.PollInterval)
 	assert.Equal(t, 300, cfg.ControlPlane.ReconcileInterval)
-	assert.Equal(t, "production", cfg.ControlPlane.Namespace)
+	assert.Equal(t, "production", cfg.ControlPlane.Region)
 	assert.Equal(t, []string{"http://e1:2379", "http://e2:2379"}, cfg.Etcd.Endpoints)
 	assert.Equal(t, "/env/domains", cfg.Etcd.DomainPrefix)
 	assert.Equal(t, "/env/clusters", cfg.Etcd.ClusterPrefix)
@@ -135,17 +135,17 @@ func TestLoad_EnvOverrideInvalidPollInterval(t *testing.T) {
 	assert.Equal(t, 5, cfg.ControlPlane.PollInterval)
 }
 
-func TestLoad_EmptyNamespaceDefaultsToDefault(t *testing.T) {
+func TestLoad_EmptyRegionDefaultsToDefault(t *testing.T) {
 	yaml := `
 controlplane:
-  namespace: ""
+  region: ""
 `
 	tmp := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(tmp, []byte(yaml), 0644))
 
 	cfg, err := Load(tmp)
 	require.NoError(t, err)
-	assert.Equal(t, "default", cfg.ControlPlane.Namespace)
+	assert.Equal(t, "default", cfg.ControlPlane.Region)
 }
 
 func TestLoad_EnvOverridesYAML(t *testing.T) {

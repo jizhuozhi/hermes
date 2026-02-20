@@ -59,7 +59,7 @@ func (m *mockStore) ListDomains(_ context.Context, ns string) ([]model.DomainCon
 	return result, nil
 }
 
-func (m *mockStore) GetDomain(_ context.Context, ns, name string) (*model.DomainConfig, int64, error) {
+func (m *mockStore) GetDomain(_ context.Context, region, name string) (*model.DomainConfig, int64, error) {
 	if nsm, ok := m.domains[ns]; ok {
 		if d, exists := nsm[name]; exists {
 			rv := int64(1)
@@ -107,7 +107,7 @@ func (m *mockStore) PutDomain(_ context.Context, ns string, d *model.DomainConfi
 	return m.revision, nil
 }
 
-func (m *mockStore) DeleteDomain(_ context.Context, ns, name, operator string) (int64, error) {
+func (m *mockStore) DeleteDomain(_ context.Context, region, name, operator string) (int64, error) {
 	if nsm, ok := m.domains[ns]; ok {
 		if _, exists := nsm[name]; exists {
 			delete(nsm, name)
@@ -126,7 +126,7 @@ func (m *mockStore) ListClusters(_ context.Context, ns string) ([]model.ClusterC
 	return result, nil
 }
 
-func (m *mockStore) GetCluster(_ context.Context, ns, name string) (*model.ClusterConfig, int64, error) {
+func (m *mockStore) GetCluster(_ context.Context, region, name string) (*model.ClusterConfig, int64, error) {
 	if nsm, ok := m.clusters[ns]; ok {
 		if c, exists := nsm[name]; exists {
 			rv := int64(1)
@@ -171,7 +171,7 @@ func (m *mockStore) PutCluster(_ context.Context, ns string, c *model.ClusterCon
 	return m.revision, nil
 }
 
-func (m *mockStore) DeleteCluster(_ context.Context, ns, name, operator string) (int64, error) {
+func (m *mockStore) DeleteCluster(_ context.Context, region, name, operator string) (int64, error) {
 	if nsm, ok := m.clusters[ns]; ok {
 		if _, exists := nsm[name]; exists {
 			delete(nsm, name)
@@ -206,23 +206,23 @@ func (m *mockStore) GetConfig(_ context.Context, ns string) (*model.GatewayConfi
 	return cfg, nil
 }
 
-func (m *mockStore) GetDomainHistory(_ context.Context, ns, name string) ([]store.HistoryEntry, error) {
+func (m *mockStore) GetDomainHistory(_ context.Context, region, name string) ([]store.HistoryEntry, error) {
 	return nil, nil
 }
-func (m *mockStore) GetDomainVersion(_ context.Context, ns, name string, version int64) (*store.HistoryEntry, error) {
+func (m *mockStore) GetDomainVersion(_ context.Context, region, name string, version int64) (*store.HistoryEntry, error) {
 	return nil, nil
 }
-func (m *mockStore) RollbackDomain(_ context.Context, ns, name string, version int64, operator string) (int64, error) {
+func (m *mockStore) RollbackDomain(_ context.Context, region, name string, version int64, operator string) (int64, error) {
 	m.revision++
 	return m.revision, nil
 }
-func (m *mockStore) GetClusterHistory(_ context.Context, ns, name string) ([]store.HistoryEntry, error) {
+func (m *mockStore) GetClusterHistory(_ context.Context, region, name string) ([]store.HistoryEntry, error) {
 	return nil, nil
 }
-func (m *mockStore) GetClusterVersion(_ context.Context, ns, name string, version int64) (*store.HistoryEntry, error) {
+func (m *mockStore) GetClusterVersion(_ context.Context, region, name string, version int64) (*store.HistoryEntry, error) {
 	return nil, nil
 }
-func (m *mockStore) RollbackCluster(_ context.Context, ns, name string, version int64, operator string) (int64, error) {
+func (m *mockStore) RollbackCluster(_ context.Context, region, name string, version int64, operator string) (int64, error) {
 	m.revision++
 	return m.revision, nil
 }
@@ -230,7 +230,7 @@ func (m *mockStore) RollbackCluster(_ context.Context, ns, name string, version 
 func (m *mockStore) ListAuditLog(_ context.Context, ns string, limit, offset int) ([]store.AuditEntry, int64, error) {
 	return m.auditLog, int64(len(m.auditLog)), nil
 }
-func (m *mockStore) InsertAuditLog(_ context.Context, ns, kind, name, action, operator string) error {
+func (m *mockStore) InsertAuditLog(_ context.Context, region, kind, name, action, operator string) error {
 	m.auditLog = append(m.auditLog, store.AuditEntry{Kind: kind, Name: name, Action: action, Operator: operator, Timestamp: time.Now()})
 	return nil
 }
@@ -248,10 +248,10 @@ func (m *mockStore) WatchFrom(_ context.Context, ns string, sinceRevision int64)
 	return events, m.revision, nil
 }
 
-func (m *mockStore) ListNamespaces(_ context.Context) ([]string, error) {
+func (m *mockStore) ListRegions(_ context.Context) ([]string, error) {
 	return []string{"default"}, nil
 }
-func (m *mockStore) CreateNamespace(_ context.Context, name string) error { return nil }
+func (m *mockStore) CreateRegion(_ context.Context, name string) error { return nil }
 
 func (m *mockStore) UpsertGatewayInstances(_ context.Context, ns string, instances []store.GatewayInstanceStatus) error {
 	m.instances[ns] = instances
@@ -305,7 +305,7 @@ func (m *mockStore) GetAPICredentialByAK(_ context.Context, accessKey string) (*
 func (m *mockStore) CreateAPICredential(_ context.Context, ns string, cred *store.APICredential) (*store.APICredential, error) {
 	cred.ID = m.nextID
 	m.nextID++
-	cred.Namespace = ns
+	cred.Region = ns
 	m.creds[ns] = append(m.creds[ns], *cred)
 	m.credsByAK[cred.AccessKey] = cred
 	return cred, nil
@@ -324,11 +324,11 @@ func (m *mockStore) DeleteAPICredential(_ context.Context, ns string, id int64) 
 	return nil
 }
 
-func (m *mockStore) UpsertUser(_ context.Context, user *store.User) error  { return nil }
+func (m *mockStore) UpsertUser(_ context.Context, user *store.User) error { return nil }
 func (m *mockStore) GetUser(_ context.Context, sub string) (*store.User, error) {
 	return nil, nil
 }
-func (m *mockStore) ListUsers(_ context.Context) ([]store.User, error)     { return nil, nil }
+func (m *mockStore) ListUsers(_ context.Context) ([]store.User, error) { return nil, nil }
 func (m *mockStore) SetUserAdmin(_ context.Context, sub string, isAdmin bool) error {
 	return nil
 }
@@ -360,27 +360,27 @@ func (m *mockStore) RotateSigningKey(_ context.Context, gracePeriod time.Duratio
 	return &store.JWTSigningKey{KID: "mock-kid"}, nil
 }
 
-func (m *mockStore) ListNamespaceMembers(_ context.Context, ns string) ([]store.NamespaceMember, error) {
+func (m *mockStore) ListRegionMembers(_ context.Context, ns string) ([]store.RegionMember, error) {
 	return nil, nil
 }
-func (m *mockStore) GetNamespaceMember(_ context.Context, ns, userSub string) (*store.NamespaceMember, error) {
+func (m *mockStore) GetRegionMember(_ context.Context, region, userSub string) (*store.RegionMember, error) {
 	return nil, nil
 }
-func (m *mockStore) SetNamespaceMember(_ context.Context, ns, userSub string, role store.NamespaceRole) error {
+func (m *mockStore) SetRegionMember(_ context.Context, region, userSub string, role store.RegionRole) error {
 	return nil
 }
-func (m *mockStore) RemoveNamespaceMember(_ context.Context, ns, userSub string) error {
+func (m *mockStore) RemoveRegionMember(_ context.Context, region, userSub string) error {
 	return nil
 }
 
 func (m *mockStore) ListGroupBindings(_ context.Context, ns string) ([]store.GroupBinding, error) {
 	return nil, nil
 }
-func (m *mockStore) SetGroupBinding(_ context.Context, ns, group string, role store.NamespaceRole) error {
+func (m *mockStore) SetGroupBinding(_ context.Context, region, group string, role store.RegionRole) error {
 	return nil
 }
-func (m *mockStore) RemoveGroupBinding(_ context.Context, ns, group string) error { return nil }
-func (m *mockStore) GetEffectiveRoleByGroups(_ context.Context, ns string, groups []string) (*store.NamespaceRole, error) {
+func (m *mockStore) RemoveGroupBinding(_ context.Context, region, group string) error { return nil }
+func (m *mockStore) GetEffectiveRoleByGroups(_ context.Context, ns string, groups []string) (*store.RegionRole, error) {
 	return nil, nil
 }
 
@@ -393,8 +393,8 @@ func testLogger() *zap.SugaredLogger {
 	return l.Sugar()
 }
 
-func withNamespace(r *http.Request, ns string) *http.Request {
-	ctx := context.WithValue(r.Context(), namespaceKey, ns)
+func withRegion(r *http.Request, region string) *http.Request {
+	ctx := context.WithValue(r.Context(), regionKey, region)
 	return r.WithContext(ctx)
 }
 
@@ -427,7 +427,7 @@ func TestDomainHandler_CreateDomain(t *testing.T) {
 	})
 
 	r := httptest.NewRequest("POST", "/api/v1/domains", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateDomain(w, r)
@@ -452,7 +452,7 @@ func TestDomainHandler_CreateDomain_Conflict(t *testing.T) {
 
 	body := jsonBody(d)
 	r := httptest.NewRequest("POST", "/api/v1/domains", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateDomain(w, r)
@@ -465,7 +465,7 @@ func TestDomainHandler_CreateDomain_MissingName(t *testing.T) {
 
 	body := jsonBody(model.DomainConfig{Hosts: []string{"a.com"}})
 	r := httptest.NewRequest("POST", "/api/v1/domains", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateDomain(w, r)
@@ -477,7 +477,7 @@ func TestDomainHandler_CreateDomain_InvalidJSON(t *testing.T) {
 	h := NewDomainHandler(ms, testLogger())
 
 	r := httptest.NewRequest("POST", "/api/v1/domains", bytes.NewBufferString("{invalid"))
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateDomain(w, r)
@@ -498,7 +498,7 @@ func TestDomainHandler_GetDomain(t *testing.T) {
 	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/domains/api", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "api")
 	w := httptest.NewRecorder()
 
@@ -516,7 +516,7 @@ func TestDomainHandler_GetDomain_NotFound(t *testing.T) {
 	h := NewDomainHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/domains/nonexistent", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "nonexistent")
 	w := httptest.NewRecorder()
 
@@ -532,7 +532,7 @@ func TestDomainHandler_ListDomains(t *testing.T) {
 	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/domains", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ListDomains(w, r)
@@ -562,7 +562,7 @@ func TestDomainHandler_UpdateDomain(t *testing.T) {
 	}
 	body := jsonBody(updated)
 	r := httptest.NewRequest("PUT", "/api/v1/domains/api", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "api")
 	w := httptest.NewRecorder()
 
@@ -576,7 +576,7 @@ func TestDomainHandler_UpdateDomain_NotFound(t *testing.T) {
 
 	body := jsonBody(map[string]any{"hosts": []string{"a.com"}, "resource_version": 1})
 	r := httptest.NewRequest("PUT", "/api/v1/domains/nonexistent", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "nonexistent")
 	w := httptest.NewRecorder()
 
@@ -592,7 +592,7 @@ func TestDomainHandler_DeleteDomain(t *testing.T) {
 	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("DELETE", "/api/v1/domains/api", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "api")
 	w := httptest.NewRecorder()
 
@@ -612,7 +612,7 @@ func TestClusterHandler_CreateCluster(t *testing.T) {
 	})
 
 	r := httptest.NewRequest("POST", "/api/v1/clusters", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateCluster(w, r)
@@ -633,7 +633,7 @@ func TestClusterHandler_CreateCluster_Conflict(t *testing.T) {
 
 	body := jsonBody(c)
 	r := httptest.NewRequest("POST", "/api/v1/clusters", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateCluster(w, r)
@@ -646,7 +646,7 @@ func TestClusterHandler_CreateCluster_MissingName(t *testing.T) {
 
 	body := jsonBody(model.ClusterConfig{LBType: "roundrobin"})
 	r := httptest.NewRequest("POST", "/api/v1/clusters", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateCluster(w, r)
@@ -666,7 +666,7 @@ func TestClusterHandler_GetCluster(t *testing.T) {
 	ms.PutCluster(context.Background(), "default", c, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/clusters/backend", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "backend")
 	w := httptest.NewRecorder()
 
@@ -679,7 +679,7 @@ func TestClusterHandler_GetCluster_NotFound(t *testing.T) {
 	h := NewClusterHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/clusters/nonexistent", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "nonexistent")
 	w := httptest.NewRecorder()
 
@@ -695,7 +695,7 @@ func TestClusterHandler_DeleteCluster(t *testing.T) {
 	ms.PutCluster(context.Background(), "default", c, "create", "test", -1)
 
 	r := httptest.NewRequest("DELETE", "/api/v1/clusters/backend", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	setPathValue(r, "name", "backend")
 	w := httptest.NewRecorder()
 
@@ -708,7 +708,7 @@ func TestWatchHandler_GetRevision(t *testing.T) {
 	h := NewWatchHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/config/revision", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.GetRevision(w, r)
@@ -726,7 +726,7 @@ func TestWatchHandler_WatchConfig(t *testing.T) {
 	ms.PutDomain(context.Background(), "default", d, "create", "test", -1)
 
 	r := httptest.NewRequest("GET", "/api/v1/config/watch?revision=0", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.WatchConfig(w, r)
@@ -741,7 +741,7 @@ func TestWatchHandler_WatchConfig_InvalidRevision(t *testing.T) {
 	h := NewWatchHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/config/watch?revision=abc", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.WatchConfig(w, r)
@@ -753,7 +753,7 @@ func TestRouteHandler_GetConfig(t *testing.T) {
 	h := NewRouteHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/config", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.GetConfig(w, r)
@@ -777,7 +777,7 @@ func TestRouteHandler_ValidateConfig_Valid(t *testing.T) {
 
 	body := jsonBody(cfg)
 	r := httptest.NewRequest("POST", "/api/v1/config/validate", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ValidateConfig(w, r)
@@ -799,7 +799,7 @@ func TestRouteHandler_ValidateConfig_Invalid(t *testing.T) {
 
 	body := jsonBody(cfg)
 	r := httptest.NewRequest("POST", "/api/v1/config/validate", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ValidateConfig(w, r)
@@ -826,7 +826,7 @@ func TestRouteHandler_PutConfig(t *testing.T) {
 
 	body := jsonBody(cfg)
 	r := httptest.NewRequest("PUT", "/api/v1/config", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.PutConfig(w, r)
@@ -840,7 +840,7 @@ func TestAuditHandler_ListAuditLog(t *testing.T) {
 	ms.InsertAuditLog(context.Background(), "default", "domain", "api", "create", "test")
 
 	r := httptest.NewRequest("GET", "/api/v1/audit", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ListAuditLog(w, r)
@@ -855,7 +855,7 @@ func TestAuditHandler_ListAuditLog_DefaultLimit(t *testing.T) {
 	h := NewAuditHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/audit", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ListAuditLog(w, r)
@@ -878,14 +878,14 @@ func TestStatusHandler_ReportAndGetController(t *testing.T) {
 	}
 	body := jsonBody(ctrl)
 	r := httptest.NewRequest("PUT", "/api/v1/status/controller", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ReportController(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	r2 := httptest.NewRequest("GET", "/api/v1/status/controller", nil)
-	r2 = withNamespace(r2, "default")
+	r2 = withRegion(r2, "default")
 	w2 := httptest.NewRecorder()
 
 	h.GetController(w2, r2)
@@ -907,14 +907,14 @@ func TestStatusHandler_ReportInstances(t *testing.T) {
 		},
 	})
 	r := httptest.NewRequest("PUT", "/api/v1/status/instances", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.ReportInstances(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	r2 := httptest.NewRequest("GET", "/api/v1/status/instances", nil)
-	r2 = withNamespace(r2, "default")
+	r2 = withRegion(r2, "default")
 	w2 := httptest.NewRecorder()
 
 	h.ListInstances(w2, r2)
@@ -926,7 +926,7 @@ func TestStatusHandler_AggregateStatus(t *testing.T) {
 	h := NewStatusHandler(ms, testLogger())
 
 	r := httptest.NewRequest("GET", "/api/v1/status", nil)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.AggregateStatus(w, r)
@@ -942,7 +942,7 @@ func TestCredentialHandler_CreateAndList(t *testing.T) {
 		"scopes":      []string{"config:read", "config:write"},
 	})
 	r := httptest.NewRequest("POST", "/api/v1/credentials", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateCredential(w, r)
@@ -953,7 +953,7 @@ func TestCredentialHandler_CreateAndList(t *testing.T) {
 	assert.NotEmpty(t, resp["secret_key"])
 
 	r2 := httptest.NewRequest("GET", "/api/v1/credentials", nil)
-	r2 = withNamespace(r2, "default")
+	r2 = withRegion(r2, "default")
 	w2 := httptest.NewRecorder()
 
 	h.ListCredentials(w2, r2)
@@ -969,7 +969,7 @@ func TestCredentialHandler_CreateWithInvalidScope(t *testing.T) {
 		"scopes":      []string{"invalid:scope"},
 	})
 	r := httptest.NewRequest("POST", "/api/v1/credentials", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.CreateCredential(w, r)
@@ -985,7 +985,7 @@ func TestGrafanaHandler_CreateAndDelete(t *testing.T) {
 		URL:  "https://grafana.example.com/d/abc",
 	})
 	r := httptest.NewRequest("POST", "/api/v1/grafana/dashboards", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.PutDashboard(w, r)
@@ -995,7 +995,7 @@ func TestGrafanaHandler_CreateAndDelete(t *testing.T) {
 	assert.Equal(t, "Overview", resp["name"])
 
 	r2 := httptest.NewRequest("DELETE", "/api/v1/grafana/dashboards/1", nil)
-	r2 = withNamespace(r2, "default")
+	r2 = withRegion(r2, "default")
 	setPathValue(r2, "id", "1")
 	w2 := httptest.NewRecorder()
 
@@ -1009,53 +1009,53 @@ func TestGrafanaHandler_PutDashboard_MissingFields(t *testing.T) {
 
 	body := jsonBody(store.GrafanaDashboard{Name: ""})
 	r := httptest.NewRequest("POST", "/api/v1/grafana/dashboards", body)
-	r = withNamespace(r, "default")
+	r = withRegion(r, "default")
 	w := httptest.NewRecorder()
 
 	h.PutDashboard(w, r)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestNamespaceMiddleware_Default(t *testing.T) {
+func TestRegionMiddleware_Default(t *testing.T) {
 	var capturedNS string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedNS = NamespaceFromContext(r.Context())
+		capturedNS = RegionFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 
-	NamespaceMiddleware(next).ServeHTTP(w, r)
+	RegionMiddleware(next).ServeHTTP(w, r)
 	assert.Equal(t, "default", capturedNS)
 }
 
-func TestNamespaceMiddleware_FromHeader(t *testing.T) {
+func TestRegionMiddleware_FromHeader(t *testing.T) {
 	var capturedNS string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedNS = NamespaceFromContext(r.Context())
+		capturedNS = RegionFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 
 	r := httptest.NewRequest("GET", "/", nil)
-	r.Header.Set("X-Hermes-Namespace", "production")
+	r.Header.Set("X-Hermes-Region", "production")
 	w := httptest.NewRecorder()
 
-	NamespaceMiddleware(next).ServeHTTP(w, r)
+	RegionMiddleware(next).ServeHTTP(w, r)
 	assert.Equal(t, "production", capturedNS)
 }
 
-func TestNamespaceMiddleware_FromQuery(t *testing.T) {
+func TestRegionMiddleware_FromQuery(t *testing.T) {
 	var capturedNS string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedNS = NamespaceFromContext(r.Context())
+		capturedNS = RegionFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r := httptest.NewRequest("GET", "/?namespace=staging", nil)
+	r := httptest.NewRequest("GET", "/?region=staging", nil)
 	w := httptest.NewRecorder()
 
-	NamespaceMiddleware(next).ServeHTTP(w, r)
+	RegionMiddleware(next).ServeHTTP(w, r)
 	assert.Equal(t, "staging", capturedNS)
 }
 

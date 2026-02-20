@@ -19,14 +19,14 @@ func NewAuditHandler(s store.Store, logger *zap.SugaredLogger) *AuditHandler {
 }
 
 func (h *AuditHandler) ListAuditLog(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if limit <= 0 {
 		limit = 50
 	}
 
-	entries, total, err := h.store.ListAuditLog(r.Context(), ns, limit, offset)
+	entries, total, err := h.store.ListAuditLog(r.Context(), region, limit, offset)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return

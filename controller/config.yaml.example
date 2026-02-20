@@ -2,7 +2,7 @@ controlplane:
   url: "http://127.0.0.1:9080"
   poll_interval: 5
   reconcile_interval: 60  # seconds, periodic full reconciliation
-  namespace: "default"  # namespace to pull config from (X-Hermes-Namespace header)
+  region: "default"  # region to pull config from (X-Hermes-Region header)
 
 etcd:
   endpoints:

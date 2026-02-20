@@ -28,7 +28,7 @@ import (
 //    3. Config drift in etcd is auto-corrected by controller
 //    4. Bulk config replacement syncs correctly
 //    5. Gateway instances registered in etcd sync back to server
-//    6. Namespace-scoped sync isolation
+//    6. Region-scoped sync isolation
 // ══════════════════════════════════════════════════════════════════════
 
 // TestE2E_Sync_BasicCRUDToEtcd creates config via the server API and
@@ -550,9 +550,9 @@ func TestE2E_Sync_InstanceRegistrationSyncBackToServer(t *testing.T) {
 	assert.Equal(t, "running", controller["status"])
 }
 
-// TestE2E_Sync_NamespaceIsolation verifies that a controller scoped to
-// one namespace only syncs that namespace's config to its etcd prefix.
-func TestE2E_Sync_NamespaceIsolation(t *testing.T) {
+// TestE2E_Sync_RegionIsolation verifies that a controller scoped to
+// one region only syncs that region's config to its etcd prefix.
+func TestE2E_Sync_RegionIsolation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -572,24 +572,24 @@ func TestE2E_Sync_NamespaceIsolation(t *testing.T) {
 
 	base := srv.baseURL
 
-	// Bootstrap credentials (also gets namespace:write for creating namespaces)
+	// Bootstrap credentials (also gets region:write for creating regions)
 	resp := apiPost(t, base, "/api/v1/credentials", map[string]any{
 		"description": "admin",
-		"scopes":      []string{"config:read", "config:write", "credential:read", "credential:write", "namespace:read", "namespace:write"},
+		"scopes":      []string{"config:read", "config:write", "credential:read", "credential:write", "region:read", "region:write"},
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	adminCred := readJSON(t, resp)
 	adminAK := adminCred["access_key"].(string)
 	adminSK := adminCred["secret_key"].(string)
 
-	// Create "staging" namespace via API
-	resp = hmacRequest(t, "POST", base+"/api/v1/namespaces", adminAK, adminSK, map[string]any{
+	// Create "staging" region via API
+	resp = hmacRequest(t, "POST", base+"/api/v1/regions", adminAK, adminSK, map[string]any{
 		"name": "staging",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// Create config in default namespace
+	// Create config in default region
 	resp = hmacRequest(t, "POST", base+"/api/v1/domains", adminAK, adminSK, domainConfig{
 		Name: "default-domain", Hosts: []string{"default.example.com"},
 		Routes: []routeConfig{{Name: "r", URI: "/*", Clusters: []weightedCluster{{Name: "default-be", Weight: 100}}, Status: 1}},
@@ -604,7 +604,7 @@ func TestE2E_Sync_NamespaceIsolation(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// Create credential + config in staging namespace
+	// Create credential + config in staging region
 	resp = hmacRequestWithNS(t, "POST", base+"/api/v1/credentials", adminAK, adminSK, "staging", map[string]any{
 		"description": "staging-ctrl",
 		"scopes":      []string{"config:read", "config:watch", "status:write"},
@@ -628,14 +628,14 @@ func TestE2E_Sync_NamespaceIsolation(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// Start controller for STAGING namespace only
+	// Start controller for STAGING region only
 	ctrl := startControllerProc(t, ctrlBin, controllerOpts{
 		cpURL:             base,
 		etcdEndpoint:      etcdEndpoint,
 		domainPrefix:      "/hermes/staging/domains",
 		clusterPrefix:     "/hermes/staging/clusters",
 		metaPrefix:        "/hermes/staging/meta",
-		namespace:         "staging",
+		region:            "staging",
 		accessKey:         stagingAK,
 		secretKey:         stagingSK,
 		pollInterval:      1,
@@ -652,7 +652,7 @@ func TestE2E_Sync_NamespaceIsolation(t *testing.T) {
 	stagingNames := extractKeyNames(stagingDomains)
 	assert.True(t, stagingNames["staging-domain"])
 
-	// Default namespace data should NOT be in staging prefix
+	// Default region data should NOT be in staging prefix
 	for _, kv := range stagingDomains.Kvs {
 		assert.False(t, strings.Contains(string(kv.Key), "default-domain"))
 	}
@@ -748,8 +748,8 @@ func TestE2E_Sync_ConfigWatch(t *testing.T) {
 	assert.NotNil(t, cfgMap["clusters"])
 }
 
-// TestE2E_Sync_NamespaceIsolationAPI verifies namespace isolation at the API level.
-func TestE2E_Sync_NamespaceIsolationAPI(t *testing.T) {
+// TestE2E_Sync_RegionIsolationAPI verifies region isolation at the API level.
+func TestE2E_Sync_RegionIsolationAPI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -765,14 +765,14 @@ func TestE2E_Sync_NamespaceIsolationAPI(t *testing.T) {
 
 	base := srv.baseURL
 
-	// Create namespace via API (bootstrap mode - no credentials yet, so unauthenticated is allowed)
-	resp := apiPost(t, base, "/api/v1/namespaces", map[string]any{
+	// Create region via API (bootstrap mode - no credentials yet, so unauthenticated is allowed)
+	resp := apiPost(t, base, "/api/v1/regions", map[string]any{
 		"name": "production",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// Create data in default namespace
+	// Create data in default region
 	resp = apiPost(t, base, "/api/v1/domains", domainConfig{
 		Name: "default-domain", Hosts: []string{"default.example.com"},
 		Routes: []routeConfig{{Name: "r1", URI: "/*", Clusters: []weightedCluster{{Name: "c", Weight: 1}}, Status: 1}},
@@ -780,10 +780,10 @@ func TestE2E_Sync_NamespaceIsolationAPI(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
-	// Create data in production namespace via header
+	// Create data in production region via header
 	req, _ := http.NewRequest("POST", base+"/api/v1/domains", nil)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Hermes-Namespace", "production")
+	req.Header.Set("X-Hermes-Region", "production")
 	b, _ := json.Marshal(domainConfig{
 		Name: "prod-domain", Hosts: []string{"prod.example.com"},
 		Routes: []routeConfig{{Name: "r1", URI: "/*", Clusters: []weightedCluster{{Name: "c", Weight: 1}}, Status: 1}},
@@ -801,7 +801,7 @@ func TestE2E_Sync_NamespaceIsolationAPI(t *testing.T) {
 
 	// Production ns: 1 domain
 	req, _ = http.NewRequest("GET", base+"/api/v1/domains", nil)
-	req.Header.Set("X-Hermes-Namespace", "production")
+	req.Header.Set("X-Hermes-Region", "production")
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	data = readJSON(t, resp)
@@ -853,24 +853,24 @@ func TestE2E_Sync_ControllerElection(t *testing.T) {
 
 	// Start first controller with election enabled
 	ctrl1 := startControllerProc(t, ctrlBin, controllerOpts{
-		cpURL:            base,
-		etcdEndpoint:     etcdEndpoint,
-		pollInterval:     1,
+		cpURL:             base,
+		etcdEndpoint:      etcdEndpoint,
+		pollInterval:      1,
 		reconcileInterval: 3,
-		electionEnabled:  true,
-		electionPrefix:   electionPrefix,
-		electionLeaseTTL: 5,
+		electionEnabled:   true,
+		electionPrefix:    electionPrefix,
+		electionLeaseTTL:  5,
 	})
 
 	// Start second controller with election enabled
 	ctrl2 := startControllerProc(t, ctrlBin, controllerOpts{
-		cpURL:            base,
-		etcdEndpoint:     etcdEndpoint,
-		pollInterval:     1,
+		cpURL:             base,
+		etcdEndpoint:      etcdEndpoint,
+		pollInterval:      1,
 		reconcileInterval: 3,
-		electionEnabled:  true,
-		electionPrefix:   electionPrefix,
-		electionLeaseTTL: 5,
+		electionEnabled:   true,
+		electionPrefix:    electionPrefix,
+		electionLeaseTTL:  5,
 	})
 	defer ctrl2.stop()
 

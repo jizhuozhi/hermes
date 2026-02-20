@@ -22,8 +22,8 @@ func NewDomainHandler(s store.Store, logger *zap.SugaredLogger) *DomainHandler {
 }
 
 func (h *DomainHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
-	domains, err := h.store.ListDomains(r.Context(), ns)
+	region := RegionFromContext(r.Context())
+	domains, err := h.store.ListDomains(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -32,9 +32,9 @@ func (h *DomainHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DomainHandler) GetDomain(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
-	domain, rv, err := h.store.GetDomain(r.Context(), ns, name)
+	domain, rv, err := h.store.GetDomain(r.Context(), region, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -47,7 +47,7 @@ func (h *DomainHandler) GetDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DomainHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	var domain model.DomainConfig
 	if err := DecodeJSON(r, &domain); err != nil {
 		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
@@ -64,7 +64,7 @@ func (h *DomainHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ver, err := h.store.PutDomain(r.Context(), ns, &domain, "create", Operator(r), 0)
+	ver, err := h.store.PutDomain(r.Context(), region, &domain, "create", Operator(r), 0)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			ErrJSON(w, http.StatusConflict, fmt.Sprintf("domain %q already exists", domain.Name))
@@ -74,12 +74,12 @@ func (h *DomainHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Infof("domain created: %s (ns=%s), version=%d", domain.Name, ns, ver)
+	h.logger.Infof("domain created: %s (ns=%s), version=%d", domain.Name, region, ver)
 	JSON(w, http.StatusCreated, map[string]any{"version": ver, "domain": domain, "resource_version": int64(1)})
 }
 
 func (h *DomainHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 
 	var body struct {
@@ -103,7 +103,7 @@ func (h *DomainHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ver, err := h.store.PutDomain(r.Context(), ns, &body.DomainConfig, "update", Operator(r), body.ResourceVersion)
+	ver, err := h.store.PutDomain(r.Context(), region, &body.DomainConfig, "update", Operator(r), body.ResourceVersion)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			ErrJSON(w, http.StatusConflict, "conflict: the domain has been modified by another user, please refresh and try again")
@@ -113,29 +113,29 @@ func (h *DomainHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Infof("domain updated: %s (ns=%s), version=%d", name, ns, ver)
+	h.logger.Infof("domain updated: %s (ns=%s), version=%d", name, region, ver)
 	JSON(w, http.StatusOK, map[string]any{"version": ver, "domain": body.DomainConfig, "resource_version": body.ResourceVersion + 1})
 }
 
 func (h *DomainHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 
-	ver, err := h.store.DeleteDomain(r.Context(), ns, name, Operator(r))
+	ver, err := h.store.DeleteDomain(r.Context(), region, name, Operator(r))
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("domain deleted: %s (ns=%s), version=%d", name, ns, ver)
+	h.logger.Infof("domain deleted: %s (ns=%s), version=%d", name, region, ver)
 	JSON(w, http.StatusOK, map[string]any{"version": ver})
 }
 
 // Per-domain history & rollback
 func (h *DomainHandler) ListDomainHistory(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
-	history, err := h.store.GetDomainHistory(r.Context(), ns, name)
+	history, err := h.store.GetDomainHistory(r.Context(), region, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -144,7 +144,7 @@ func (h *DomainHandler) ListDomainHistory(w http.ResponseWriter, r *http.Request
 }
 
 func (h *DomainHandler) GetDomainVersion(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 	versionStr := r.PathValue("version")
 	version, err := strconv.ParseInt(versionStr, 10, 64)
@@ -153,7 +153,7 @@ func (h *DomainHandler) GetDomainVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	entry, err := h.store.GetDomainVersion(r.Context(), ns, name, version)
+	entry, err := h.store.GetDomainVersion(r.Context(), region, name, version)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -167,7 +167,7 @@ func (h *DomainHandler) GetDomainVersion(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *DomainHandler) RollbackDomain(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 	versionStr := r.PathValue("version")
 	version, err := strconv.ParseInt(versionStr, 10, 64)
@@ -176,13 +176,13 @@ func (h *DomainHandler) RollbackDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newVersion, err := h.store.RollbackDomain(r.Context(), ns, name, version, Operator(r))
+	newVersion, err := h.store.RollbackDomain(r.Context(), region, name, version, Operator(r))
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("domain %s (ns=%s) rollback to version %d, new version=%d", name, ns, version, newVersion)
+	h.logger.Infof("domain %s (ns=%s) rollback to version %d, new version=%d", name, region, version, newVersion)
 	JSON(w, http.StatusOK, map[string]any{
 		"name":           name,
 		"rolled_back_to": version,

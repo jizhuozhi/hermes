@@ -135,7 +135,9 @@ func (m *mockControlplane) deleteDomain(name string) {
 	defer m.mu.Unlock()
 	filtered := m.domains[:0]
 	for _, d := range m.domains {
-		var h struct{ Name string `json:"name"` }
+		var h struct {
+			Name string `json:"name"`
+		}
 		json.Unmarshal(d, &h)
 		if h.Name != name {
 			filtered = append(filtered, d)
@@ -161,7 +163,7 @@ func newTestController(t *testing.T, cpURL, etcdEndpoint string) *Controller {
 			URL:               cpURL,
 			PollInterval:      1,
 			ReconcileInterval: 60,
-			Namespace:         "default",
+			Region:            "default",
 		},
 		Etcd: config.EtcdConfig{
 			Endpoints:      []string{etcdEndpoint},

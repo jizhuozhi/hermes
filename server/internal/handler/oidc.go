@@ -300,12 +300,12 @@ func (h *OIDCHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 // OIDC JWT Verification (used by Authenticate middleware)
 // OIDCClaims are the standard OIDC claims extracted from a verified JWT.
 type OIDCClaims struct {
-	Sub              string   `json:"sub"`
+	Sub               string   `json:"sub"`
 	PreferredUsername string   `json:"preferred_username,omitempty"`
-	Email            string   `json:"email,omitempty"`
-	Name             string   `json:"name,omitempty"`
-	Groups           []string `json:"groups,omitempty"`
-	Exp              int64    `json:"exp,omitempty"`
+	Email             string   `json:"email,omitempty"`
+	Name              string   `json:"name,omitempty"`
+	Groups            []string `json:"groups,omitempty"`
+	Exp               int64    `json:"exp,omitempty"`
 }
 
 // OIDCClaimsFromContext returns OIDC claims from the request context.

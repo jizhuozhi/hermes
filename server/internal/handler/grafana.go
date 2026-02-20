@@ -19,11 +19,11 @@ func NewGrafanaHandler(s store.Store, logger *zap.SugaredLogger) *GrafanaHandler
 	return &GrafanaHandler{store: s, logger: logger}
 }
 
-// ListDashboards returns all configured Grafana dashboards in the current namespace.
+// ListDashboards returns all configured Grafana dashboards in the current region.
 func (h *GrafanaHandler) ListDashboards(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	dashboards, err := h.store.ListGrafanaDashboards(r.Context(), ns)
+	dashboards, err := h.store.ListGrafanaDashboards(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("list grafana dashboards: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -37,7 +37,7 @@ func (h *GrafanaHandler) ListDashboards(w http.ResponseWriter, r *http.Request) 
 
 // PutDashboard creates or updates a Grafana dashboard.
 func (h *GrafanaHandler) PutDashboard(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	body, err := ReadBody(r)
 	if err != nil {
@@ -57,7 +57,7 @@ func (h *GrafanaHandler) PutDashboard(w http.ResponseWriter, r *http.Request) {
 
 	isNew := d.ID == 0
 
-	result, err := h.store.PutGrafanaDashboard(r.Context(), ns, &d)
+	result, err := h.store.PutGrafanaDashboard(r.Context(), region, &d)
 	if err != nil {
 		h.logger.Errorf("put grafana dashboard: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -73,7 +73,7 @@ func (h *GrafanaHandler) PutDashboard(w http.ResponseWriter, r *http.Request) {
 
 // DeleteDashboard deletes a Grafana dashboard by ID.
 func (h *GrafanaHandler) DeleteDashboard(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -82,7 +82,7 @@ func (h *GrafanaHandler) DeleteDashboard(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.store.DeleteGrafanaDashboard(r.Context(), ns, id); err != nil {
+	if err := h.store.DeleteGrafanaDashboard(r.Context(), region, id); err != nil {
 		h.logger.Errorf("delete grafana dashboard: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return

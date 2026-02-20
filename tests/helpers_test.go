@@ -54,8 +54,8 @@ func startEtcd(t *testing.T, ctx context.Context) (*clientv3.Client, string, fun
 			Image:        "quay.io/coreos/etcd:v3.5.17",
 			ExposedPorts: []string{"2379/tcp"},
 			Env: map[string]string{
-				"ETCD_ADVERTISE_CLIENT_URLS":  "http://0.0.0.0:2379",
-				"ETCD_LISTEN_CLIENT_URLS":     "http://0.0.0.0:2379",
+				"ETCD_ADVERTISE_CLIENT_URLS": "http://0.0.0.0:2379",
+				"ETCD_LISTEN_CLIENT_URLS":    "http://0.0.0.0:2379",
 			},
 			WaitingFor: wait.ForLog("ready to serve client requests").
 				WithStartupTimeout(30 * time.Second),
@@ -400,7 +400,7 @@ func hmacRequestWithNS(t *testing.T, method, url, accessKey, secretKey, ns strin
 	req.Header.Set("Authorization", fmt.Sprintf("HMAC-SHA256 Credential=%s,Signature=%s", accessKey, signature))
 	req.Header.Set("X-Hermes-Timestamp", timestamp)
 	req.Header.Set("X-Hermes-Body-SHA256", bodyHash)
-	req.Header.Set("X-Hermes-Namespace", ns)
+	req.Header.Set("X-Hermes-Region", ns)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -494,7 +494,7 @@ type controllerOpts struct {
 	clusterPrefix     string
 	metaPrefix        string
 	instancePrefix    string
-	namespace         string
+	region         string
 	accessKey         string
 	secretKey         string
 	pollInterval      int
@@ -519,8 +519,8 @@ func startControllerProc(t *testing.T, ctrlBin string, opts controllerOpts) *con
 	if opts.instancePrefix == "" {
 		opts.instancePrefix = "/hermes/instances"
 	}
-	if opts.namespace == "" {
-		opts.namespace = "default"
+	if opts.region == "" {
+		opts.region = "default"
 	}
 	if opts.pollInterval == 0 {
 		opts.pollInterval = 1
@@ -533,7 +533,7 @@ func startControllerProc(t *testing.T, ctrlBin string, opts controllerOpts) *con
   url: %q
   poll_interval: %d
   reconcile_interval: %d
-  namespace: %q
+  region: %q
 
 etcd:
   endpoints:
@@ -546,7 +546,7 @@ etcd:
 		opts.cpURL,
 		opts.pollInterval,
 		opts.reconcileInterval,
-		opts.namespace,
+		opts.region,
 		opts.etcdEndpoint,
 		opts.domainPrefix,
 		opts.clusterPrefix,
@@ -838,7 +838,7 @@ type mockOIDCProvider struct {
 
 type mockOIDCUser struct {
 	Sub               string
-	PreferredUsername  string
+	PreferredUsername string
 	Email             string
 	Name              string
 	Groups            []string

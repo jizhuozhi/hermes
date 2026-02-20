@@ -87,12 +87,12 @@ func TestDomainCRUD(t *testing.T) {
 	ns := "default"
 
 	// Create
-	ver, err := s.PutDomain(ctx, ns, sampleDomain("api"), "create", "test", 0)
+	ver, err := s.PutDomain(ctx, region, sampleDomain("api"), "create", "test", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 
 	// Get
-	d, rv, err := s.GetDomain(ctx, ns, "api")
+	d, rv, err := s.GetDomain(ctx, region, "api")
 	require.NoError(t, err)
 	require.NotNil(t, d)
 	assert.Equal(t, "api", d.Name)
@@ -100,27 +100,27 @@ func TestDomainCRUD(t *testing.T) {
 	assert.Equal(t, int64(1), rv)
 
 	// List
-	domains, err := s.ListDomains(ctx, ns)
+	domains, err := s.ListDomains(ctx, region)
 	require.NoError(t, err)
 	assert.Len(t, domains, 1)
 
 	// Update (with OCC)
 	updated := sampleDomain("api")
 	updated.Hosts = []string{"api-v2.example.com"}
-	ver2, err := s.PutDomain(ctx, ns, updated, "update", "test", rv)
+	ver2, err := s.PutDomain(ctx, region, updated, "update", "test", rv)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), ver2)
 
-	d2, rv2, _ := s.GetDomain(ctx, ns, "api")
+	d2, rv2, _ := s.GetDomain(ctx, region, "api")
 	assert.Equal(t, []string{"api-v2.example.com"}, d2.Hosts)
 	assert.Equal(t, int64(2), rv2)
 
 	// Delete
-	ver3, err := s.DeleteDomain(ctx, ns, "api", "test")
+	ver3, err := s.DeleteDomain(ctx, region, "api", "test")
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver3)
 
-	d3, _, err := s.GetDomain(ctx, ns, "api")
+	d3, _, err := s.GetDomain(ctx, region, "api")
 	require.NoError(t, err)
 	assert.Nil(t, d3)
 }
@@ -143,25 +143,25 @@ func TestClusterCRUD(t *testing.T) {
 
 	ns := "default"
 
-	ver, err := s.PutCluster(ctx, ns, sampleCluster("backend"), "create", "test", 0)
+	ver, err := s.PutCluster(ctx, region, sampleCluster("backend"), "create", "test", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 
-	c, rv, err := s.GetCluster(ctx, ns, "backend")
+	c, rv, err := s.GetCluster(ctx, region, "backend")
 	require.NoError(t, err)
 	require.NotNil(t, c)
 	assert.Equal(t, "backend", c.Name)
 	assert.Equal(t, "roundrobin", c.LBType)
 	assert.Equal(t, int64(1), rv)
 
-	clusters, err := s.ListClusters(ctx, ns)
+	clusters, err := s.ListClusters(ctx, region)
 	require.NoError(t, err)
 	assert.Len(t, clusters, 1)
 
 	// Delete
-	_, err = s.DeleteCluster(ctx, ns, "backend", "test")
+	_, err = s.DeleteCluster(ctx, region, "backend", "test")
 	require.NoError(t, err)
-	c2, _, _ := s.GetCluster(ctx, ns, "backend")
+	c2, _, _ := s.GetCluster(ctx, region, "backend")
 	assert.Nil(t, c2)
 }
 
@@ -175,14 +175,14 @@ func TestDomainHistory(t *testing.T) {
 
 	// Create v1
 	d := sampleDomain("hist")
-	s.PutDomain(ctx, ns, d, "create", "alice", 0)
+	s.PutDomain(ctx, region, d, "create", "alice", 0)
 
 	// Update v2
 	d.Hosts = []string{"hist-v2.example.com"}
-	s.PutDomain(ctx, ns, d, "update", "bob", 1)
+	s.PutDomain(ctx, region, d, "update", "bob", 1)
 
 	// Get history
-	history, err := s.GetDomainHistory(ctx, ns, "hist")
+	history, err := s.GetDomainHistory(ctx, region, "hist")
 	require.NoError(t, err)
 	assert.Len(t, history, 2)
 	assert.Equal(t, int64(2), history[0].Version) // newest first
@@ -192,17 +192,17 @@ func TestDomainHistory(t *testing.T) {
 	assert.Equal(t, "create", history[1].Action)
 
 	// Get specific version
-	v1, err := s.GetDomainVersion(ctx, ns, "hist", 1)
+	v1, err := s.GetDomainVersion(ctx, region, "hist", 1)
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	assert.Equal(t, "create", v1.Action)
 
 	// Rollback to v1
-	ver, err := s.RollbackDomain(ctx, ns, "hist", 1, "charlie")
+	ver, err := s.RollbackDomain(ctx, region, "hist", 1, "charlie")
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver) // v3 is the rollback
 
-	d2, _, _ := s.GetDomain(ctx, ns, "hist")
+	d2, _, _ := s.GetDomain(ctx, region, "hist")
 	assert.Equal(t, "hist.example.com", d2.Hosts[0])
 }
 
@@ -213,21 +213,21 @@ func TestClusterHistory(t *testing.T) {
 
 	ns := "default"
 	c := sampleCluster("hist-cluster")
-	s.PutCluster(ctx, ns, c, "create", "alice", 0)
+	s.PutCluster(ctx, region, c, "create", "alice", 0)
 
 	c.LBType = "random"
-	s.PutCluster(ctx, ns, c, "update", "bob", 1)
+	s.PutCluster(ctx, region, c, "update", "bob", 1)
 
-	history, err := s.GetClusterHistory(ctx, ns, "hist-cluster")
+	history, err := s.GetClusterHistory(ctx, region, "hist-cluster")
 	require.NoError(t, err)
 	assert.Len(t, history, 2)
 
 	// Rollback
-	ver, err := s.RollbackCluster(ctx, ns, "hist-cluster", 1, "charlie")
+	ver, err := s.RollbackCluster(ctx, region, "hist-cluster", 1, "charlie")
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), ver)
 
-	c2, _, _ := s.GetCluster(ctx, ns, "hist-cluster")
+	c2, _, _ := s.GetCluster(ctx, region, "hist-cluster")
 	assert.Equal(t, "roundrobin", c2.LBType)
 }
 
@@ -240,12 +240,12 @@ func TestDomainOCC_CreateConflict(t *testing.T) {
 	ns := "default"
 
 	// First create succeeds
-	ver, err := s.PutDomain(ctx, ns, sampleDomain("occ"), "create", "alice", 0)
+	ver, err := s.PutDomain(ctx, region, sampleDomain("occ"), "create", "alice", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), ver)
 
 	// Second create with expectedVersion=0 should conflict
-	_, err = s.PutDomain(ctx, ns, sampleDomain("occ"), "create", "bob", 0)
+	_, err = s.PutDomain(ctx, region, sampleDomain("occ"), "create", "bob", 0)
 	assert.ErrorIs(t, err, ErrConflict)
 }
 
@@ -257,26 +257,26 @@ func TestDomainOCC_UpdateStaleVersion(t *testing.T) {
 	ns := "default"
 
 	// Create
-	s.PutDomain(ctx, ns, sampleDomain("occ2"), "create", "alice", 0)
+	s.PutDomain(ctx, region, sampleDomain("occ2"), "create", "alice", 0)
 
 	// Alice reads rv=1
-	_, rv1, _ := s.GetDomain(ctx, ns, "occ2")
+	_, rv1, _ := s.GetDomain(ctx, region, "occ2")
 	assert.Equal(t, int64(1), rv1)
 
 	// Bob updates with rv=1 → succeeds
 	d := sampleDomain("occ2")
 	d.Hosts = []string{"bob.example.com"}
-	_, err := s.PutDomain(ctx, ns, d, "update", "bob", rv1)
+	_, err := s.PutDomain(ctx, region, d, "update", "bob", rv1)
 	require.NoError(t, err)
 
 	// Alice tries to update with stale rv=1 → conflict
 	d2 := sampleDomain("occ2")
 	d2.Hosts = []string{"alice.example.com"}
-	_, err = s.PutDomain(ctx, ns, d2, "update", "alice", rv1)
+	_, err = s.PutDomain(ctx, region, d2, "update", "alice", rv1)
 	assert.ErrorIs(t, err, ErrConflict)
 
 	// Verify Bob's update persisted
-	got, rv2, _ := s.GetDomain(ctx, ns, "occ2")
+	got, rv2, _ := s.GetDomain(ctx, region, "occ2")
 	assert.Equal(t, []string{"bob.example.com"}, got.Hosts)
 	assert.Equal(t, int64(2), rv2)
 }
@@ -289,16 +289,16 @@ func TestDomainOCC_BypassMode(t *testing.T) {
 	ns := "default"
 
 	// Create with bypass (-1)
-	_, err := s.PutDomain(ctx, ns, sampleDomain("bypass"), "create", "test", -1)
+	_, err := s.PutDomain(ctx, region, sampleDomain("bypass"), "create", "test", -1)
 	require.NoError(t, err)
 
 	// Update with bypass (-1) regardless of version
 	d := sampleDomain("bypass")
 	d.Hosts = []string{"bypass-v2.example.com"}
-	_, err = s.PutDomain(ctx, ns, d, "update", "test", -1)
+	_, err = s.PutDomain(ctx, region, d, "update", "test", -1)
 	require.NoError(t, err)
 
-	got, _, _ := s.GetDomain(ctx, ns, "bypass")
+	got, _, _ := s.GetDomain(ctx, region, "bypass")
 	assert.Equal(t, []string{"bypass-v2.example.com"}, got.Hosts)
 }
 
@@ -309,10 +309,10 @@ func TestClusterOCC_CreateConflict(t *testing.T) {
 
 	ns := "default"
 
-	_, err := s.PutCluster(ctx, ns, sampleCluster("occ-c"), "create", "alice", 0)
+	_, err := s.PutCluster(ctx, region, sampleCluster("occ-c"), "create", "alice", 0)
 	require.NoError(t, err)
 
-	_, err = s.PutCluster(ctx, ns, sampleCluster("occ-c"), "create", "bob", 0)
+	_, err = s.PutCluster(ctx, region, sampleCluster("occ-c"), "create", "bob", 0)
 	assert.ErrorIs(t, err, ErrConflict)
 }
 
@@ -323,22 +323,22 @@ func TestClusterOCC_UpdateStaleVersion(t *testing.T) {
 
 	ns := "default"
 
-	s.PutCluster(ctx, ns, sampleCluster("occ-c2"), "create", "alice", 0)
-	_, rv1, _ := s.GetCluster(ctx, ns, "occ-c2")
+	s.PutCluster(ctx, region, sampleCluster("occ-c2"), "create", "alice", 0)
+	_, rv1, _ := s.GetCluster(ctx, region, "occ-c2")
 
 	// Bob updates
 	c := sampleCluster("occ-c2")
 	c.LBType = "random"
-	_, err := s.PutCluster(ctx, ns, c, "update", "bob", rv1)
+	_, err := s.PutCluster(ctx, region, c, "update", "bob", rv1)
 	require.NoError(t, err)
 
 	// Alice tries stale version
 	c2 := sampleCluster("occ-c2")
 	c2.LBType = "least_request"
-	_, err = s.PutCluster(ctx, ns, c2, "update", "alice", rv1)
+	_, err = s.PutCluster(ctx, region, c2, "update", "alice", rv1)
 	assert.ErrorIs(t, err, ErrConflict)
 
-	got, _, _ := s.GetCluster(ctx, ns, "occ-c2")
+	got, _, _ := s.GetCluster(ctx, region, "occ-c2")
 	assert.Equal(t, "random", got.LBType)
 }
 
@@ -351,54 +351,54 @@ func TestWatchFrom(t *testing.T) {
 	ns := "default"
 
 	// Initial revision should be 0
-	rev, err := s.CurrentRevision(ctx, ns)
+	rev, err := s.CurrentRevision(ctx, region)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), rev)
 
 	// Create some data
-	s.PutDomain(ctx, ns, sampleDomain("watch1"), "create", "test", 0)
-	s.PutCluster(ctx, ns, sampleCluster("watch-c1"), "create", "test", 0)
+	s.PutDomain(ctx, region, sampleDomain("watch1"), "create", "test", 0)
+	s.PutCluster(ctx, region, sampleCluster("watch-c1"), "create", "test", 0)
 
 	// Watch from 0
-	events, maxRev, err := s.WatchFrom(ctx, ns, 0)
+	events, maxRev, err := s.WatchFrom(ctx, region, 0)
 	require.NoError(t, err)
 	assert.Len(t, events, 2)
 	assert.True(t, maxRev > 0)
 
 	// Watch from maxRev should return no events
-	events2, _, err := s.WatchFrom(ctx, ns, maxRev)
+	events2, _, err := s.WatchFrom(ctx, region, maxRev)
 	require.NoError(t, err)
 	assert.Empty(t, events2)
 
 	// One more change
-	s.PutDomain(ctx, ns, sampleDomain("watch2"), "create", "test", 0)
-	events3, _, err := s.WatchFrom(ctx, ns, maxRev)
+	s.PutDomain(ctx, region, sampleDomain("watch2"), "create", "test", 0)
+	events3, _, err := s.WatchFrom(ctx, region, maxRev)
 	require.NoError(t, err)
 	assert.Len(t, events3, 1)
 	assert.Equal(t, "domain", events3[0].Kind)
 	assert.Equal(t, "watch2", events3[0].Name)
 }
 
-// Namespace Tests
-func TestNamespaces(t *testing.T) {
+// Region Tests
+func TestRegions(t *testing.T) {
 	ctx := context.Background()
 	s, cleanup := startPostgres(t, ctx)
 	defer cleanup()
 
-	// Default namespace should exist
-	nsList, err := s.ListNamespaces(ctx)
+	// Default region should exist
+	nsList, err := s.ListRegions(ctx)
 	require.NoError(t, err)
 	assert.Contains(t, nsList, "default")
 
-	// Create new namespace
-	err = s.CreateNamespace(ctx, "production")
+	// Create new region
+	err = s.CreateRegion(ctx, "production")
 	require.NoError(t, err)
 
-	nsList, err = s.ListNamespaces(ctx)
+	nsList, err = s.ListRegions(ctx)
 	require.NoError(t, err)
 	assert.Contains(t, nsList, "production")
 
-	// Namespace isolation: data in one ns doesn't appear in another
+	// Region isolation: data in one region doesn't appear in another
 	s.PutDomain(ctx, "default", sampleDomain("d1"), "create", "test", 0)
 	s.PutDomain(ctx, "production", sampleDomain("d2"), "create", "test", 0)
 
@@ -419,25 +419,25 @@ func TestPutAllConfig(t *testing.T) {
 	ns := "default"
 
 	// Pre-populate
-	s.PutDomain(ctx, ns, sampleDomain("old"), "create", "test", 0)
-	s.PutCluster(ctx, ns, sampleCluster("old-c"), "create", "test", 0)
+	s.PutDomain(ctx, region, sampleDomain("old"), "create", "test", 0)
+	s.PutCluster(ctx, region, sampleCluster("old-c"), "create", "test", 0)
 
 	// Replace all
 	newDomains := []model.DomainConfig{*sampleDomain("new1"), *sampleDomain("new2")}
 	newClusters := []model.ClusterConfig{*sampleCluster("new-c")}
-	_, err := s.PutAllConfig(ctx, ns, newDomains, newClusters, "import-test")
+	_, err := s.PutAllConfig(ctx, region, newDomains, newClusters, "import-test")
 	require.NoError(t, err)
 
 	// Old data should be gone
-	d, _, _ := s.GetDomain(ctx, ns, "old")
+	d, _, _ := s.GetDomain(ctx, region, "old")
 	assert.Nil(t, d)
-	c, _, _ := s.GetCluster(ctx, ns, "old-c")
+	c, _, _ := s.GetCluster(ctx, region, "old-c")
 	assert.Nil(t, c)
 
 	// New data should exist
-	domains, _ := s.ListDomains(ctx, ns)
+	domains, _ := s.ListDomains(ctx, region)
 	assert.Len(t, domains, 2)
-	clusters, _ := s.ListClusters(ctx, ns)
+	clusters, _ := s.ListClusters(ctx, region)
 	assert.Len(t, clusters, 1)
 }
 
@@ -449,11 +449,11 @@ func TestAuditLog(t *testing.T) {
 
 	ns := "default"
 
-	s.PutDomain(ctx, ns, sampleDomain("audit1"), "create", "alice", 0)
-	s.PutDomain(ctx, ns, sampleDomain("audit2"), "create", "bob", 0)
-	s.DeleteDomain(ctx, ns, "audit1", "charlie")
+	s.PutDomain(ctx, region, sampleDomain("audit1"), "create", "alice", 0)
+	s.PutDomain(ctx, region, sampleDomain("audit2"), "create", "bob", 0)
+	s.DeleteDomain(ctx, region, "audit1", "charlie")
 
-	entries, total, err := s.ListAuditLog(ctx, ns, 50, 0)
+	entries, total, err := s.ListAuditLog(ctx, region, 50, 0)
 	require.NoError(t, err)
 	assert.True(t, total >= 3)
 	assert.True(t, len(entries) >= 3)
@@ -475,13 +475,13 @@ func TestAPICredentialsCRUD(t *testing.T) {
 		Scopes:      []string{ScopeConfigRead, ScopeConfigWrite},
 		Enabled:     true,
 	}
-	result, err := s.CreateAPICredential(ctx, ns, cred)
+	result, err := s.CreateAPICredential(ctx, region, cred)
 	require.NoError(t, err)
 	assert.True(t, result.ID > 0)
-	assert.Equal(t, ns, result.Namespace)
+	assert.Equal(t, region, result.Region)
 
 	// List
-	creds, err := s.ListAPICredentials(ctx, ns)
+	creds, err := s.ListAPICredentials(ctx, region)
 	require.NoError(t, err)
 	assert.Len(t, creds, 1)
 	assert.Equal(t, "test-ak-12345", creds[0].AccessKey)
@@ -496,14 +496,14 @@ func TestAPICredentialsCRUD(t *testing.T) {
 	// Update
 	found.Description = "updated"
 	found.Scopes = []string{ScopeConfigRead}
-	err = s.UpdateAPICredential(ctx, ns, found)
+	err = s.UpdateAPICredential(ctx, region, found)
 	require.NoError(t, err)
 
 	// Delete
-	err = s.DeleteAPICredential(ctx, ns, found.ID)
+	err = s.DeleteAPICredential(ctx, region, found.ID)
 	require.NoError(t, err)
 
-	creds2, _ := s.ListAPICredentials(ctx, ns)
+	creds2, _ := s.ListAPICredentials(ctx, region)
 	assert.Empty(t, creds2)
 }
 
@@ -529,18 +529,18 @@ func TestGatewayInstanceStatus(t *testing.T) {
 		{ID: "gw-2", Status: "running", ConfigRevision: 10},
 	}
 
-	err := s.UpsertGatewayInstances(ctx, ns, instances)
+	err := s.UpsertGatewayInstances(ctx, region, instances)
 	require.NoError(t, err)
 
-	list, err := s.ListGatewayInstances(ctx, ns)
+	list, err := s.ListGatewayInstances(ctx, region)
 	require.NoError(t, err)
 	assert.Len(t, list, 2)
 
 	// Update: remove one
-	err = s.UpsertGatewayInstances(ctx, ns, instances[:1])
+	err = s.UpsertGatewayInstances(ctx, region, instances[:1])
 	require.NoError(t, err)
 
-	list2, _ := s.ListGatewayInstances(ctx, ns)
+	list2, _ := s.ListGatewayInstances(ctx, region)
 	assert.Len(t, list2, 1)
 }
 
@@ -559,10 +559,10 @@ func TestControllerStatus(t *testing.T) {
 		ConfigRevision:  42,
 	}
 
-	err := s.UpsertControllerStatus(ctx, ns, ctrl)
+	err := s.UpsertControllerStatus(ctx, region, ctrl)
 	require.NoError(t, err)
 
-	got, err := s.GetControllerStatus(ctx, ns)
+	got, err := s.GetControllerStatus(ctx, region)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "ctrl-1", got.ID)
@@ -572,10 +572,10 @@ func TestControllerStatus(t *testing.T) {
 
 	// Update: lose leadership
 	ctrl.IsLeader = false
-	err = s.UpsertControllerStatus(ctx, ns, ctrl)
+	err = s.UpsertControllerStatus(ctx, region, ctrl)
 	require.NoError(t, err)
 
-	got, err = s.GetControllerStatus(ctx, ns)
+	got, err = s.GetControllerStatus(ctx, region)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.False(t, got.IsLeader)
@@ -590,7 +590,7 @@ func TestGrafanaDashboards(t *testing.T) {
 	ns := "default"
 
 	// Create
-	d1, err := s.PutGrafanaDashboard(ctx, ns, &GrafanaDashboard{
+	d1, err := s.PutGrafanaDashboard(ctx, region, &GrafanaDashboard{
 		Name: "Overview",
 		URL:  "https://grafana.example.com/d/abc123",
 	})
@@ -598,20 +598,20 @@ func TestGrafanaDashboards(t *testing.T) {
 	assert.True(t, d1.ID > 0)
 
 	// List
-	dashboards, err := s.ListGrafanaDashboards(ctx, ns)
+	dashboards, err := s.ListGrafanaDashboards(ctx, region)
 	require.NoError(t, err)
 	assert.Len(t, dashboards, 1)
 
 	// Update
 	d1.Name = "Updated Overview"
-	_, err = s.PutGrafanaDashboard(ctx, ns, d1)
+	_, err = s.PutGrafanaDashboard(ctx, region, d1)
 	require.NoError(t, err)
 
 	// Delete
-	err = s.DeleteGrafanaDashboard(ctx, ns, d1.ID)
+	err = s.DeleteGrafanaDashboard(ctx, region, d1.ID)
 	require.NoError(t, err)
 
-	dashboards2, _ := s.ListGrafanaDashboards(ctx, ns)
+	dashboards2, _ := s.ListGrafanaDashboards(ctx, region)
 	assert.Empty(t, dashboards2)
 }
 
@@ -656,19 +656,19 @@ func TestAPICredentialHasScope(t *testing.T) {
 	assert.False(t, cred.HasScope(ScopeConfigWrite))
 }
 
-func TestValidateNamespaceName(t *testing.T) {
-	assert.Empty(t, ValidateNamespaceName("default"))
-	assert.Empty(t, ValidateNamespaceName("production"))
-	assert.Empty(t, ValidateNamespaceName("my-namespace-123"))
-	assert.Empty(t, ValidateNamespaceName("a"))
-	assert.NotEmpty(t, ValidateNamespaceName(""))
-	assert.NotEmpty(t, ValidateNamespaceName("-bad"))
-	assert.NotEmpty(t, ValidateNamespaceName("bad-"))
-	assert.NotEmpty(t, ValidateNamespaceName("UPPERCASE"))
-	assert.NotEmpty(t, ValidateNamespaceName("has space"))
+func TestValidateRegionName(t *testing.T) {
+	assert.Empty(t, ValidateRegionName("default"))
+	assert.Empty(t, ValidateRegionName("production"))
+	assert.Empty(t, ValidateRegionName("my-region-123"))
+	assert.Empty(t, ValidateRegionName("a"))
+	assert.NotEmpty(t, ValidateRegionName(""))
+	assert.NotEmpty(t, ValidateRegionName("-bad"))
+	assert.NotEmpty(t, ValidateRegionName("bad-"))
+	assert.NotEmpty(t, ValidateRegionName("UPPERCASE"))
+	assert.NotEmpty(t, ValidateRegionName("has space"))
 
 	// 63 chars should be ok
-	assert.Empty(t, ValidateNamespaceName("a"+strings.Repeat("b", 61)+"c"))
+	assert.Empty(t, ValidateRegionName("a"+strings.Repeat("b", 61)+"c"))
 	// 64 chars should fail
-	assert.NotEmpty(t, ValidateNamespaceName(strings.Repeat("a", 64)))
+	assert.NotEmpty(t, ValidateRegionName(strings.Repeat("a", 64)))
 }

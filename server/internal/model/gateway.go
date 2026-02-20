@@ -40,21 +40,21 @@ type DomainConfig struct {
 // RouteConfig references one or more clusters by name with weights.
 // Routes no longer embed upstream configuration directly.
 type RouteConfig struct {
-	ID                       string              `json:"id"`
-	Name                     string              `json:"name"`
-	URI                      string              `json:"uri"`
-	Methods                  []string            `json:"methods"`
-	Headers                  []HeaderMatcher     `json:"headers,omitempty"`
-	Priority                 int                 `json:"priority"`
-	Clusters                 []WeightedCluster   `json:"clusters"`
-	RateLimit                *RateLimitConfig    `json:"rate_limit,omitempty"`
-	ClusterOverrideHeader    *string             `json:"cluster_override_header,omitempty"`
-	RequestHeaderTransforms  []HeaderTransform   `json:"request_header_transforms,omitempty"`
-	ResponseHeaderTransforms []HeaderTransform   `json:"response_header_transforms,omitempty"`
-	MaxBodyBytes             *int64              `json:"max_body_bytes,omitempty"`
-	EnableCompression        bool                `json:"enable_compression"`
-	Status                   int                 `json:"status"`
-	Plugins                  interface{}         `json:"plugins,omitempty"`
+	ID                       string            `json:"id"`
+	Name                     string            `json:"name"`
+	URI                      string            `json:"uri"`
+	Methods                  []string          `json:"methods"`
+	Headers                  []HeaderMatcher   `json:"headers,omitempty"`
+	Priority                 int               `json:"priority"`
+	Clusters                 []WeightedCluster `json:"clusters"`
+	RateLimit                *RateLimitConfig  `json:"rate_limit,omitempty"`
+	ClusterOverrideHeader    *string           `json:"cluster_override_header,omitempty"`
+	RequestHeaderTransforms  []HeaderTransform `json:"request_header_transforms,omitempty"`
+	ResponseHeaderTransforms []HeaderTransform `json:"response_header_transforms,omitempty"`
+	MaxBodyBytes             *int64            `json:"max_body_bytes,omitempty"`
+	EnableCompression        bool              `json:"enable_compression"`
+	Status                   int               `json:"status"`
+	Plugins                  interface{}       `json:"plugins,omitempty"`
 }
 
 // HeaderMatcher defines a header matching condition for a route.

@@ -20,9 +20,9 @@ func NewWatchHandler(s store.Store, logger *zap.SugaredLogger) *WatchHandler {
 
 // WatchConfig implements long-poll: GET /api/v1/config/watch?revision=N
 // Returns changes since revision N. If no changes, blocks up to 30s.
-// Namespace is determined from context (X-Hermes-Namespace header).
+// Region is determined from context (X-Hermes-Region header).
 func (h *WatchHandler) WatchConfig(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	sinceStr := r.URL.Query().Get("revision")
 	var since int64
 	if sinceStr != "" {
@@ -34,7 +34,7 @@ func (h *WatchHandler) WatchConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	events, maxRev, err := h.store.WatchFrom(r.Context(), ns, since)
+	events, maxRev, err := h.store.WatchFrom(r.Context(), region, since)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -49,8 +49,8 @@ func (h *WatchHandler) WatchConfig(w http.ResponseWriter, r *http.Request) {
 
 // GetRevision returns the current max revision: GET /api/v1/config/revision
 func (h *WatchHandler) GetRevision(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
-	rev, err := h.store.CurrentRevision(r.Context(), ns)
+	region := RegionFromContext(r.Context())
+	rev, err := h.store.CurrentRevision(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return

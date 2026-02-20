@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// MemberHandler handles namespace member management and user admin APIs.
+// MemberHandler handles region member management and user admin APIs.
 type MemberHandler struct {
 	store  store.Store
 	logger *zap.SugaredLogger
@@ -21,25 +21,25 @@ func NewMemberHandler(s store.Store, logger *zap.SugaredLogger) *MemberHandler {
 	return &MemberHandler{store: s, logger: logger}
 }
 
-// Namespace Members
-// ListMembers returns all members of a namespace.
+// Region Members
+// ListMembers returns all members of a region.
 func (h *MemberHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	members, err := h.store.ListNamespaceMembers(r.Context(), ns)
+	members, err := h.store.ListRegionMembers(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if members == nil {
-		members = []store.NamespaceMember{}
+		members = []store.RegionMember{}
 	}
 	JSON(w, http.StatusOK, map[string]any{"members": members})
 }
 
-// AddMember adds or updates a member's role in the namespace.
+// AddMember adds or updates a member's role in the region.
 func (h *MemberHandler) AddMember(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	var req struct {
 		UserSub string `json:"user_sub"`
@@ -57,7 +57,7 @@ func (h *MemberHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := store.NamespaceRole(req.Role)
+	role := store.RegionRole(req.Role)
 	if role != store.RoleOwner && role != store.RoleEditor && role != store.RoleViewer {
 		ErrJSON(w, http.StatusBadRequest, "role must be owner, editor, or viewer")
 		return
@@ -74,17 +74,17 @@ func (h *MemberHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.SetNamespaceMember(r.Context(), ns, req.UserSub, role); err != nil {
+	if err := h.store.SetRegionMember(r.Context(), region, req.UserSub, role); err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.store.InsertAuditLog(r.Context(), ns, "member", req.UserSub, "set_role:"+req.Role, Operator(r))
+	_ = h.store.InsertAuditLog(r.Context(), region, "member", req.UserSub, "set_role:"+req.Role, Operator(r))
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// RemoveMember removes a member from the namespace.
+// RemoveMember removes a member from the region.
 func (h *MemberHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	userSub := r.PathValue("sub")
 	if userSub == "" {
@@ -92,7 +92,7 @@ func (h *MemberHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.RemoveNamespaceMember(r.Context(), ns, userSub); err != nil {
+	if err := h.store.RemoveRegionMember(r.Context(), region, userSub); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			ErrJSON(w, http.StatusNotFound, err.Error())
 			return
@@ -100,16 +100,16 @@ func (h *MemberHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.store.InsertAuditLog(r.Context(), ns, "member", userSub, "remove", Operator(r))
+	_ = h.store.InsertAuditLog(r.Context(), region, "member", userSub, "remove", Operator(r))
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // Group Bindings
-// ListGroupBindings returns all OIDC group → role bindings for a namespace.
+// ListGroupBindings returns all OIDC group → role bindings for a region.
 func (h *MemberHandler) ListGroupBindings(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	bindings, err := h.store.ListGroupBindings(r.Context(), ns)
+	bindings, err := h.store.ListGroupBindings(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -122,7 +122,7 @@ func (h *MemberHandler) ListGroupBindings(w http.ResponseWriter, r *http.Request
 
 // SetGroupBinding creates or updates an OIDC group → role binding.
 func (h *MemberHandler) SetGroupBinding(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	var req struct {
 		Group string `json:"group"`
@@ -140,23 +140,23 @@ func (h *MemberHandler) SetGroupBinding(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	role := store.NamespaceRole(req.Role)
+	role := store.RegionRole(req.Role)
 	if role != store.RoleOwner && role != store.RoleEditor && role != store.RoleViewer {
 		ErrJSON(w, http.StatusBadRequest, "role must be owner, editor, or viewer")
 		return
 	}
 
-	if err := h.store.SetGroupBinding(r.Context(), ns, req.Group, role); err != nil {
+	if err := h.store.SetGroupBinding(r.Context(), region, req.Group, role); err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.store.InsertAuditLog(r.Context(), ns, "group_binding", req.Group, "set_role:"+req.Role, Operator(r))
+	_ = h.store.InsertAuditLog(r.Context(), region, "group_binding", req.Group, "set_role:"+req.Role, Operator(r))
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// RemoveGroupBinding removes an OIDC group binding from the namespace.
+// RemoveGroupBinding removes an OIDC group binding from the region.
 func (h *MemberHandler) RemoveGroupBinding(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	group := r.PathValue("group")
 	if group == "" {
@@ -164,7 +164,7 @@ func (h *MemberHandler) RemoveGroupBinding(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.store.RemoveGroupBinding(r.Context(), ns, group); err != nil {
+	if err := h.store.RemoveGroupBinding(r.Context(), region, group); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			ErrJSON(w, http.StatusNotFound, err.Error())
 			return
@@ -172,7 +172,7 @@ func (h *MemberHandler) RemoveGroupBinding(w http.ResponseWriter, r *http.Reques
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.store.InsertAuditLog(r.Context(), ns, "group_binding", group, "remove", Operator(r))
+	_ = h.store.InsertAuditLog(r.Context(), region, "group_binding", group, "remove", Operator(r))
 	JSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -470,7 +470,7 @@ func (h *MemberHandler) WhoAmI(w http.ResponseWriter, r *http.Request) {
 		JSON(w, http.StatusOK, map[string]any{
 			"source":     "hmac",
 			"subject":    id.Subject,
-			"namespace":  id.Namespace,
+			"region":     id.Region,
 			"scopes":     id.Scopes,
 			"access_key": id.Credential.AccessKey,
 		})
@@ -494,7 +494,7 @@ func (h *MemberHandler) WhoAmI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	var role string
 	var roleSource string
@@ -502,15 +502,15 @@ func (h *MemberHandler) WhoAmI(w http.ResponseWriter, r *http.Request) {
 		role = "admin"
 		roleSource = "admin"
 	} else {
-		member, _ := h.store.GetNamespaceMember(r.Context(), ns, claims.Sub)
+		member, _ := h.store.GetRegionMember(r.Context(), region, claims.Sub)
 		if member != nil {
 			role = string(member.Role)
 			roleSource = "direct"
 		}
 		if len(claims.Groups) > 0 {
-			groupRole, err := h.store.GetEffectiveRoleByGroups(r.Context(), ns, claims.Groups)
+			groupRole, err := h.store.GetEffectiveRoleByGroups(r.Context(), region, claims.Groups)
 			if err == nil && groupRole != nil {
-				if role == "" || store.RolePriority(*groupRole) > store.RolePriority(store.NamespaceRole(role)) {
+				if role == "" || store.RolePriority(*groupRole) > store.RolePriority(store.RegionRole(role)) {
 					role = string(*groupRole)
 					roleSource = "group"
 				}

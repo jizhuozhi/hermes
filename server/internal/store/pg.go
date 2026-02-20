@@ -10,8 +10,8 @@ import (
 
 	"github.com/jizhuozhi/hermes/server/internal/model"
 
-	"github.com/lib/pq"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -51,36 +51,36 @@ func (s *PgStore) Close() {
 // Schema migration
 func (s *PgStore) migrate(ctx context.Context) error {
 	ddl := `
--- ── Namespaces ───────────────────────────────────
-CREATE TABLE IF NOT EXISTS namespaces (
+-- ── Regions ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS regions (
     name       TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-INSERT INTO namespaces (name) VALUES ('default') ON CONFLICT DO NOTHING;
+INSERT INTO regions (name) VALUES ('default') ON CONFLICT DO NOTHING;
 
 -- ── Configuration ────────────────────────────────
 CREATE TABLE IF NOT EXISTS domains (
-    namespace  TEXT NOT NULL DEFAULT 'default',
+    region     TEXT NOT NULL DEFAULT 'default',
     name       TEXT NOT NULL,
     config     JSONB NOT NULL,
     resource_version BIGINT NOT NULL DEFAULT 1,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (namespace, name)
+    PRIMARY KEY (region, name)
 );
 
 CREATE TABLE IF NOT EXISTS clusters (
-    namespace  TEXT NOT NULL DEFAULT 'default',
+    region     TEXT NOT NULL DEFAULT 'default',
     name       TEXT NOT NULL,
     config     JSONB NOT NULL,
     resource_version BIGINT NOT NULL DEFAULT 1,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (namespace, name)
+    PRIMARY KEY (region, name)
 );
 
 -- ── Change tracking ──────────────────────────────
 CREATE TABLE IF NOT EXISTS config_history (
     id         BIGSERIAL PRIMARY KEY,
-    namespace  TEXT NOT NULL DEFAULT 'default',
+    region     TEXT NOT NULL DEFAULT 'default',
     kind       TEXT NOT NULL,
     name       TEXT NOT NULL,
     version    BIGINT NOT NULL,
@@ -89,11 +89,11 @@ CREATE TABLE IF NOT EXISTS config_history (
     config     JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_history_ns_kind_name ON config_history(namespace, kind, name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_history_region_kind_name ON config_history(region, kind, name, version DESC);
 
 CREATE TABLE IF NOT EXISTS change_log (
     revision   BIGSERIAL PRIMARY KEY,
-    namespace  TEXT NOT NULL DEFAULT 'default',
+    region     TEXT NOT NULL DEFAULT 'default',
     kind       TEXT NOT NULL,
     name       TEXT NOT NULL,
     action     TEXT NOT NULL,
@@ -101,11 +101,11 @@ CREATE TABLE IF NOT EXISTS change_log (
     config     JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_changelog_ns_revision ON change_log(namespace, revision);
+CREATE INDEX IF NOT EXISTS idx_changelog_region_revision ON change_log(region, revision);
 
 -- ── Runtime status ───────────────────────────────
 CREATE TABLE IF NOT EXISTS gateway_instances (
-    namespace         TEXT NOT NULL DEFAULT 'default',
+    region            TEXT NOT NULL DEFAULT 'default',
     id                TEXT NOT NULL,
     status            TEXT NOT NULL DEFAULT '',
     started_at        TEXT NOT NULL DEFAULT '',
@@ -114,11 +114,11 @@ CREATE TABLE IF NOT EXISTS gateway_instances (
     config_revision   BIGINT NOT NULL DEFAULT 0,
     last_seen_at      TEXT NOT NULL DEFAULT '',
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (namespace, id)
+    PRIMARY KEY (region, id)
 ) WITH (fillfactor = 70);
 
 CREATE TABLE IF NOT EXISTS controller_status (
-    namespace         TEXT NOT NULL DEFAULT 'default',
+    region            TEXT NOT NULL DEFAULT 'default',
     id                TEXT NOT NULL,
     status            TEXT NOT NULL DEFAULT '',
     is_leader         BOOLEAN NOT NULL DEFAULT FALSE,
@@ -126,13 +126,13 @@ CREATE TABLE IF NOT EXISTS controller_status (
     last_heartbeat_at TEXT NOT NULL DEFAULT '',
     config_revision   BIGINT NOT NULL DEFAULT 0,
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (namespace, id)
+    PRIMARY KEY (region, id)
 ) WITH (fillfactor = 70);
 
 -- ── Credentials (HMAC) ──────────────────────────
 CREATE TABLE IF NOT EXISTS api_credentials (
     id          BIGSERIAL PRIMARY KEY,
-    namespace   TEXT NOT NULL DEFAULT 'default',
+    region      TEXT NOT NULL DEFAULT 'default',
     access_key  TEXT NOT NULL UNIQUE,
     secret_key  TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -163,31 +163,31 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-CREATE TABLE IF NOT EXISTS namespace_members (
-    namespace  TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS region_members (
+    region     TEXT NOT NULL,
     user_sub   TEXT NOT NULL REFERENCES users(sub) ON DELETE CASCADE,
     role       TEXT NOT NULL DEFAULT 'viewer',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (namespace, user_sub)
+    PRIMARY KEY (region, user_sub)
 );
-CREATE INDEX IF NOT EXISTS idx_ns_members_user ON namespace_members(user_sub);
+CREATE INDEX IF NOT EXISTS idx_region_members_user ON region_members(user_sub);
 
 CREATE TABLE IF NOT EXISTS group_bindings (
     id         BIGSERIAL PRIMARY KEY,
-    namespace  TEXT NOT NULL,
+    region     TEXT NOT NULL,
     group_name TEXT NOT NULL,
     role       TEXT NOT NULL DEFAULT 'viewer',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(namespace, group_name)
+    UNIQUE(region, group_name)
 );
-CREATE INDEX IF NOT EXISTS idx_group_bindings_ns ON group_bindings(namespace);
+CREATE INDEX IF NOT EXISTS idx_group_bindings_region ON group_bindings(region);
 
 -- ── Misc ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS grafana_dashboards (
-    id        BIGSERIAL PRIMARY KEY,
-    namespace TEXT NOT NULL DEFAULT 'default',
-    name      TEXT NOT NULL,
-    url       TEXT NOT NULL
+    id     BIGSERIAL PRIMARY KEY,
+    region TEXT NOT NULL DEFAULT 'default',
+    name   TEXT NOT NULL,
+    url    TEXT NOT NULL
 );
 
 -- ── JWT Signing Keys (builtin auth) ─────────────
@@ -207,8 +207,8 @@ CREATE INDEX IF NOT EXISTS idx_jwt_keys_status ON jwt_signing_keys(status);
 }
 
 // Domain CRUD
-func (s *PgStore) ListDomains(ctx context.Context, ns string) ([]model.DomainConfig, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT config FROM domains WHERE namespace = $1 ORDER BY name`, ns)
+func (s *PgStore) ListDomains(ctx context.Context, region string) ([]model.DomainConfig, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT config FROM domains WHERE region = $1 ORDER BY name`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list domains: %w", err)
 	}
@@ -230,10 +230,10 @@ func (s *PgStore) ListDomains(ctx context.Context, ns string) ([]model.DomainCon
 	return domains, rows.Err()
 }
 
-func (s *PgStore) GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, int64, error) {
+func (s *PgStore) GetDomain(ctx context.Context, region, name string) (*model.DomainConfig, int64, error) {
 	var data []byte
 	var rv int64
-	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM domains WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data, &rv)
+	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM domains WHERE region = $1 AND name = $2`, region, name).Scan(&data, &rv)
 	if err == sql.ErrNoRows {
 		return nil, 0, nil
 	}
@@ -247,7 +247,7 @@ func (s *PgStore) GetDomain(ctx context.Context, ns, name string) (*model.Domain
 	return &d, rv, nil
 }
 
-func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error) {
+func (s *PgStore) PutDomain(ctx context.Context, region string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error) {
 	data, err := json.Marshal(domain)
 	if err != nil {
 		return 0, fmt.Errorf("marshal domain: %w", err)
@@ -266,10 +266,10 @@ func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.Domain
 	if expectedVersion == 0 {
 		// Create: INSERT ... ON CONFLICT DO NOTHING, then check affected rows.
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO domains (namespace, name, config, resource_version, updated_at)
+			`INSERT INTO domains (region, name, config, resource_version, updated_at)
 			 VALUES ($1, $2, $3, 1, NOW())
-			 ON CONFLICT (namespace, name) DO NOTHING`,
-			ns, domain.Name, data)
+			 ON CONFLICT (region, name) DO NOTHING`,
+			region, domain.Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg insert domain: %w", err)
 		}
@@ -281,8 +281,8 @@ func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.Domain
 		// Update with OCC: only update if resource_version matches.
 		res, err := tx.ExecContext(ctx,
 			`UPDATE domains SET config = $3, resource_version = resource_version + 1, updated_at = NOW()
-			 WHERE namespace = $1 AND name = $2 AND resource_version = $4`,
-			ns, domain.Name, data, expectedVersion)
+			 WHERE region = $1 AND name = $2 AND resource_version = $4`,
+			region, domain.Name, data, expectedVersion)
 		if err != nil {
 			return 0, fmt.Errorf("pg update domain: %w", err)
 		}
@@ -293,30 +293,30 @@ func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.Domain
 	} else {
 		// Bypass OCC (expectedVersion == -1): unconditional upsert.
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO domains (namespace, name, config, resource_version, updated_at)
+			`INSERT INTO domains (region, name, config, resource_version, updated_at)
 			 VALUES ($1, $2, $3, 1, NOW())
-			 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, resource_version = domains.resource_version + 1, updated_at = NOW()`,
-			ns, domain.Name, data)
+			 ON CONFLICT (region, name) DO UPDATE SET config = $3, resource_version = domains.resource_version + 1, updated_at = NOW()`,
+			region, domain.Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg upsert domain: %w", err)
 		}
 	}
 
-	version, err := s.nextVersion(ctx, tx, ns, "domain", domain.Name)
+	version, err := s.nextVersion(ctx, tx, region, "domain", domain.Name)
 	if err != nil {
 		return 0, err
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, $4, $5, $6)`,
-		ns, domain.Name, version, action, operator, data)
+		`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, $4, $5, $6)`,
+		region, domain.Name, version, action, operator, data)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert domain history: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'domain', $2, $3, $4, $5)`,
-		ns, domain.Name, action, operator, data)
+		`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'domain', $2, $3, $4, $5)`,
+		region, domain.Name, action, operator, data)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert change_log: %w", err)
 	}
@@ -325,13 +325,13 @@ func (s *PgStore) PutDomain(ctx context.Context, ns string, domain *model.Domain
 		return 0, fmt.Errorf("pg commit: %w", err)
 	}
 
-	go s.pruneHistory(context.Background(), ns, "domain", domain.Name)
+	go s.pruneHistory(context.Background(), region, "domain", domain.Name)
 
-	s.logger.Infof("domain written: ns=%s name=%s, action=%s, operator=%s, version=%d", ns, domain.Name, action, operator, version)
+	s.logger.Infof("domain written: region=%s name=%s, action=%s, operator=%s, version=%d", region, domain.Name, action, operator, version)
 	return version, nil
 }
 
-func (s *PgStore) DeleteDomain(ctx context.Context, ns, name, operator string) (int64, error) {
+func (s *PgStore) DeleteDomain(ctx context.Context, region, name, operator string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("pg begin tx: %w", err)
@@ -340,7 +340,7 @@ func (s *PgStore) DeleteDomain(ctx context.Context, ns, name, operator string) (
 
 	// Read current value inside the transaction to avoid TOCTOU.
 	var configData []byte
-	err = tx.QueryRowContext(ctx, `SELECT config FROM domains WHERE namespace = $1 AND name = $2`, ns, name).Scan(&configData)
+	err = tx.QueryRowContext(ctx, `SELECT config FROM domains WHERE region = $1 AND name = $2`, region, name).Scan(&configData)
 	if err == sql.ErrNoRows {
 		return 0, fmt.Errorf("domain %q not found", name)
 	}
@@ -348,26 +348,26 @@ func (s *PgStore) DeleteDomain(ctx context.Context, ns, name, operator string) (
 		return 0, fmt.Errorf("pg get domain for delete: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM domains WHERE namespace = $1 AND name = $2`, ns, name)
+	_, err = tx.ExecContext(ctx, `DELETE FROM domains WHERE region = $1 AND name = $2`, region, name)
 	if err != nil {
 		return 0, fmt.Errorf("pg delete domain: %w", err)
 	}
 
-	version, err := s.nextVersion(ctx, tx, ns, "domain", name)
+	version, err := s.nextVersion(ctx, tx, region, "domain", name)
 	if err != nil {
 		return 0, err
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, 'delete', $4, $5)`,
-		ns, name, version, operator, configData)
+		`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, 'delete', $4, $5)`,
+		region, name, version, operator, configData)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert domain delete history: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'domain', $2, 'delete', $3, NULL)`,
-		ns, name, operator)
+		`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'domain', $2, 'delete', $3, NULL)`,
+		region, name, operator)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert change_log: %w", err)
 	}
@@ -376,13 +376,13 @@ func (s *PgStore) DeleteDomain(ctx context.Context, ns, name, operator string) (
 		return 0, fmt.Errorf("pg commit: %w", err)
 	}
 
-	s.logger.Infof("domain deleted: ns=%s name=%s, operator=%s, version=%d", ns, name, operator, version)
+	s.logger.Infof("domain deleted: region=%s name=%s, operator=%s, version=%d", region, name, operator, version)
 	return version, nil
 }
 
 // Cluster CRUD
-func (s *PgStore) ListClusters(ctx context.Context, ns string) ([]model.ClusterConfig, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT config FROM clusters WHERE namespace = $1 ORDER BY name`, ns)
+func (s *PgStore) ListClusters(ctx context.Context, region string) ([]model.ClusterConfig, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT config FROM clusters WHERE region = $1 ORDER BY name`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list clusters: %w", err)
 	}
@@ -404,10 +404,10 @@ func (s *PgStore) ListClusters(ctx context.Context, ns string) ([]model.ClusterC
 	return clusters, rows.Err()
 }
 
-func (s *PgStore) GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, int64, error) {
+func (s *PgStore) GetCluster(ctx context.Context, region, name string) (*model.ClusterConfig, int64, error) {
 	var data []byte
 	var rv int64
-	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM clusters WHERE namespace = $1 AND name = $2`, ns, name).Scan(&data, &rv)
+	err := s.db.QueryRowContext(ctx, `SELECT config, resource_version FROM clusters WHERE region = $1 AND name = $2`, region, name).Scan(&data, &rv)
 	if err == sql.ErrNoRows {
 		return nil, 0, nil
 	}
@@ -421,7 +421,7 @@ func (s *PgStore) GetCluster(ctx context.Context, ns, name string) (*model.Clust
 	return &c, rv, nil
 }
 
-func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error) {
+func (s *PgStore) PutCluster(ctx context.Context, region string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error) {
 	data, err := json.Marshal(cluster)
 	if err != nil {
 		return 0, fmt.Errorf("marshal cluster: %w", err)
@@ -436,10 +436,10 @@ func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.Clus
 	// Optimistic concurrency control (same semantics as PutDomain).
 	if expectedVersion == 0 {
 		res, err := tx.ExecContext(ctx,
-			`INSERT INTO clusters (namespace, name, config, resource_version, updated_at)
+			`INSERT INTO clusters (region, name, config, resource_version, updated_at)
 			 VALUES ($1, $2, $3, 1, NOW())
-			 ON CONFLICT (namespace, name) DO NOTHING`,
-			ns, cluster.Name, data)
+			 ON CONFLICT (region, name) DO NOTHING`,
+			region, cluster.Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg insert cluster: %w", err)
 		}
@@ -450,8 +450,8 @@ func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.Clus
 	} else if expectedVersion > 0 {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE clusters SET config = $3, resource_version = resource_version + 1, updated_at = NOW()
-			 WHERE namespace = $1 AND name = $2 AND resource_version = $4`,
-			ns, cluster.Name, data, expectedVersion)
+			 WHERE region = $1 AND name = $2 AND resource_version = $4`,
+			region, cluster.Name, data, expectedVersion)
 		if err != nil {
 			return 0, fmt.Errorf("pg update cluster: %w", err)
 		}
@@ -461,30 +461,30 @@ func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.Clus
 		}
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO clusters (namespace, name, config, resource_version, updated_at)
+			`INSERT INTO clusters (region, name, config, resource_version, updated_at)
 			 VALUES ($1, $2, $3, 1, NOW())
-			 ON CONFLICT (namespace, name) DO UPDATE SET config = $3, resource_version = clusters.resource_version + 1, updated_at = NOW()`,
-			ns, cluster.Name, data)
+			 ON CONFLICT (region, name) DO UPDATE SET config = $3, resource_version = clusters.resource_version + 1, updated_at = NOW()`,
+			region, cluster.Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg upsert cluster: %w", err)
 		}
 	}
 
-	version, err := s.nextVersion(ctx, tx, ns, "cluster", cluster.Name)
+	version, err := s.nextVersion(ctx, tx, region, "cluster", cluster.Name)
 	if err != nil {
 		return 0, err
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, $4, $5, $6)`,
-		ns, cluster.Name, version, action, operator, data)
+		`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, $4, $5, $6)`,
+		region, cluster.Name, version, action, operator, data)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert cluster history: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, $3, $4, $5)`,
-		ns, cluster.Name, action, operator, data)
+		`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, $3, $4, $5)`,
+		region, cluster.Name, action, operator, data)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert change_log: %w", err)
 	}
@@ -493,13 +493,13 @@ func (s *PgStore) PutCluster(ctx context.Context, ns string, cluster *model.Clus
 		return 0, fmt.Errorf("pg commit: %w", err)
 	}
 
-	go s.pruneHistory(context.Background(), ns, "cluster", cluster.Name)
+	go s.pruneHistory(context.Background(), region, "cluster", cluster.Name)
 
-	s.logger.Infof("cluster written: ns=%s name=%s, action=%s, operator=%s, version=%d", ns, cluster.Name, action, operator, version)
+	s.logger.Infof("cluster written: region=%s name=%s, action=%s, operator=%s, version=%d", region, cluster.Name, action, operator, version)
 	return version, nil
 }
 
-func (s *PgStore) DeleteCluster(ctx context.Context, ns, name, operator string) (int64, error) {
+func (s *PgStore) DeleteCluster(ctx context.Context, region, name, operator string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("pg begin tx: %w", err)
@@ -508,7 +508,7 @@ func (s *PgStore) DeleteCluster(ctx context.Context, ns, name, operator string) 
 
 	// Read current value inside the transaction to avoid TOCTOU.
 	var configData []byte
-	err = tx.QueryRowContext(ctx, `SELECT config FROM clusters WHERE namespace = $1 AND name = $2`, ns, name).Scan(&configData)
+	err = tx.QueryRowContext(ctx, `SELECT config FROM clusters WHERE region = $1 AND name = $2`, region, name).Scan(&configData)
 	if err == sql.ErrNoRows {
 		return 0, fmt.Errorf("cluster %q not found", name)
 	}
@@ -516,26 +516,26 @@ func (s *PgStore) DeleteCluster(ctx context.Context, ns, name, operator string) 
 		return 0, fmt.Errorf("pg get cluster for delete: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM clusters WHERE namespace = $1 AND name = $2`, ns, name)
+	_, err = tx.ExecContext(ctx, `DELETE FROM clusters WHERE region = $1 AND name = $2`, region, name)
 	if err != nil {
 		return 0, fmt.Errorf("pg delete cluster: %w", err)
 	}
 
-	version, err := s.nextVersion(ctx, tx, ns, "cluster", name)
+	version, err := s.nextVersion(ctx, tx, region, "cluster", name)
 	if err != nil {
 		return 0, err
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, 'delete', $4, $5)`,
-		ns, name, version, operator, configData)
+		`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, 'delete', $4, $5)`,
+		region, name, version, operator, configData)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert cluster delete history: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, 'delete', $3, NULL)`,
-		ns, name, operator)
+		`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, 'delete', $3, NULL)`,
+		region, name, operator)
 	if err != nil {
 		return 0, fmt.Errorf("pg insert change_log: %w", err)
 	}
@@ -544,23 +544,23 @@ func (s *PgStore) DeleteCluster(ctx context.Context, ns, name, operator string) 
 		return 0, fmt.Errorf("pg commit: %w", err)
 	}
 
-	s.logger.Infof("cluster deleted: ns=%s name=%s, operator=%s, version=%d", ns, name, operator, version)
+	s.logger.Infof("cluster deleted: region=%s name=%s, operator=%s, version=%d", region, name, operator, version)
 	return version, nil
 }
 
 // Bulk operations
-func (s *PgStore) PutAllConfig(ctx context.Context, ns string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error) {
+func (s *PgStore) PutAllConfig(ctx context.Context, region string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("pg begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Clear existing within namespace
-	if _, err := tx.ExecContext(ctx, `DELETE FROM domains WHERE namespace = $1`, ns); err != nil {
+	// Clear existing within region
+	if _, err := tx.ExecContext(ctx, `DELETE FROM domains WHERE region = $1`, region); err != nil {
 		return 0, fmt.Errorf("pg truncate domains: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM clusters WHERE namespace = $1`, ns); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM clusters WHERE region = $1`, region); err != nil {
 		return 0, fmt.Errorf("pg truncate clusters: %w", err)
 	}
 
@@ -571,23 +571,23 @@ func (s *PgStore) PutAllConfig(ctx context.Context, ns string, domains []model.D
 			return 0, fmt.Errorf("marshal cluster %s: %w", clusters[i].Name, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO clusters (namespace, name, config) VALUES ($1, $2, $3)`,
-			ns, clusters[i].Name, data)
+			`INSERT INTO clusters (region, name, config) VALUES ($1, $2, $3)`,
+			region, clusters[i].Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg insert cluster %s: %w", clusters[i].Name, err)
 		}
-		ver, err := s.nextVersionTx(ctx, tx, ns, "cluster", clusters[i].Name)
+		ver, err := s.nextVersionTx(ctx, tx, region, "cluster", clusters[i].Name)
 		if err != nil {
 			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, 'import', $4, $5)`,
-			ns, clusters[i].Name, ver, operator, data); err != nil {
+			`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'cluster', $2, $3, 'import', $4, $5)`,
+			region, clusters[i].Name, ver, operator, data); err != nil {
 			return 0, fmt.Errorf("pg insert cluster history (import): %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, 'import', $3, $4)`,
-			ns, clusters[i].Name, operator, data); err != nil {
+			`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'cluster', $2, 'import', $3, $4)`,
+			region, clusters[i].Name, operator, data); err != nil {
 			return 0, fmt.Errorf("pg insert cluster change_log (import): %w", err)
 		}
 	}
@@ -599,23 +599,23 @@ func (s *PgStore) PutAllConfig(ctx context.Context, ns string, domains []model.D
 			return 0, fmt.Errorf("marshal domain %s: %w", domains[i].Name, err)
 		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO domains (namespace, name, config) VALUES ($1, $2, $3)`,
-			ns, domains[i].Name, data)
+			`INSERT INTO domains (region, name, config) VALUES ($1, $2, $3)`,
+			region, domains[i].Name, data)
 		if err != nil {
 			return 0, fmt.Errorf("pg insert domain %s: %w", domains[i].Name, err)
 		}
-		ver, err := s.nextVersionTx(ctx, tx, ns, "domain", domains[i].Name)
+		ver, err := s.nextVersionTx(ctx, tx, region, "domain", domains[i].Name)
 		if err != nil {
 			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO config_history (namespace, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, 'import', $4, $5)`,
-			ns, domains[i].Name, ver, operator, data); err != nil {
+			`INSERT INTO config_history (region, kind, name, version, action, operator, config) VALUES ($1, 'domain', $2, $3, 'import', $4, $5)`,
+			region, domains[i].Name, ver, operator, data); err != nil {
 			return 0, fmt.Errorf("pg insert domain history (import): %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO change_log (namespace, kind, name, action, operator, config) VALUES ($1, 'domain', $2, 'import', $3, $4)`,
-			ns, domains[i].Name, operator, data); err != nil {
+			`INSERT INTO change_log (region, kind, name, action, operator, config) VALUES ($1, 'domain', $2, 'import', $3, $4)`,
+			region, domains[i].Name, operator, data); err != nil {
 			return 0, fmt.Errorf("pg insert domain change_log (import): %w", err)
 		}
 	}
@@ -624,16 +624,16 @@ func (s *PgStore) PutAllConfig(ctx context.Context, ns string, domains []model.D
 		return 0, fmt.Errorf("pg commit: %w", err)
 	}
 
-	s.logger.Infof("all config replaced: ns=%s, domains=%d, clusters=%d", ns, len(domains), len(clusters))
+	s.logger.Infof("all config replaced: region=%s, domairegion=%d, clusters=%d", region, len(domains), len(clusters))
 	return 0, nil
 }
 
-func (s *PgStore) GetConfig(ctx context.Context, ns string) (*model.GatewayConfig, error) {
-	domains, err := s.ListDomains(ctx, ns)
+func (s *PgStore) GetConfig(ctx context.Context, region string) (*model.GatewayConfig, error) {
+	domains, err := s.ListDomains(ctx, region)
 	if err != nil {
 		return nil, err
 	}
-	clusters, err := s.ListClusters(ctx, ns)
+	clusters, err := s.ListClusters(ctx, region)
 	if err != nil {
 		return nil, err
 	}
@@ -647,16 +647,16 @@ func (s *PgStore) GetConfig(ctx context.Context, ns string) (*model.GatewayConfi
 }
 
 // Per-domain History
-func (s *PgStore) GetDomainHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error) {
-	return s.getHistory(ctx, ns, "domain", name)
+func (s *PgStore) GetDomainHistory(ctx context.Context, region, name string) ([]HistoryEntry, error) {
+	return s.getHistory(ctx, region, "domain", name)
 }
 
-func (s *PgStore) GetDomainVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error) {
-	return s.getVersion(ctx, ns, "domain", name, version)
+func (s *PgStore) GetDomainVersion(ctx context.Context, region, name string, version int64) (*HistoryEntry, error) {
+	return s.getVersion(ctx, region, "domain", name, version)
 }
 
-func (s *PgStore) RollbackDomain(ctx context.Context, ns, name string, version int64, operator string) (int64, error) {
-	entry, err := s.GetDomainVersion(ctx, ns, name, version)
+func (s *PgStore) RollbackDomain(ctx context.Context, region, name string, version int64, operator string) (int64, error) {
+	entry, err := s.GetDomainVersion(ctx, region, name, version)
 	if err != nil {
 		return 0, err
 	}
@@ -666,20 +666,20 @@ func (s *PgStore) RollbackDomain(ctx context.Context, ns, name string, version i
 	if entry.Domain == nil {
 		return 0, fmt.Errorf("domain %q version %d is a delete entry, cannot rollback", name, version)
 	}
-	return s.PutDomain(ctx, ns, entry.Domain, "rollback", operator, -1)
+	return s.PutDomain(ctx, region, entry.Domain, "rollback", operator, -1)
 }
 
 // Per-cluster History
-func (s *PgStore) GetClusterHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error) {
-	return s.getHistory(ctx, ns, "cluster", name)
+func (s *PgStore) GetClusterHistory(ctx context.Context, region, name string) ([]HistoryEntry, error) {
+	return s.getHistory(ctx, region, "cluster", name)
 }
 
-func (s *PgStore) GetClusterVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error) {
-	return s.getVersion(ctx, ns, "cluster", name, version)
+func (s *PgStore) GetClusterVersion(ctx context.Context, region, name string, version int64) (*HistoryEntry, error) {
+	return s.getVersion(ctx, region, "cluster", name, version)
 }
 
-func (s *PgStore) RollbackCluster(ctx context.Context, ns, name string, version int64, operator string) (int64, error) {
-	entry, err := s.GetClusterVersion(ctx, ns, name, version)
+func (s *PgStore) RollbackCluster(ctx context.Context, region, name string, version int64, operator string) (int64, error) {
+	entry, err := s.GetClusterVersion(ctx, region, name, version)
 	if err != nil {
 		return 0, err
 	}
@@ -689,13 +689,13 @@ func (s *PgStore) RollbackCluster(ctx context.Context, ns, name string, version 
 	if entry.Cluster == nil {
 		return 0, fmt.Errorf("cluster %q version %d is a delete entry, cannot rollback", name, version)
 	}
-	return s.PutCluster(ctx, ns, entry.Cluster, "rollback", operator, -1)
+	return s.PutCluster(ctx, region, entry.Cluster, "rollback", operator, -1)
 }
 
 // Watch (long-poll for controller)
-func (s *PgStore) CurrentRevision(ctx context.Context, ns string) (int64, error) {
+func (s *PgStore) CurrentRevision(ctx context.Context, region string) (int64, error) {
 	var rev sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(revision) FROM change_log WHERE namespace = $1`, ns).Scan(&rev)
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(revision) FROM change_log WHERE region = $1`, region).Scan(&rev)
 	if err != nil {
 		return 0, fmt.Errorf("pg current revision: %w", err)
 	}
@@ -705,15 +705,15 @@ func (s *PgStore) CurrentRevision(ctx context.Context, ns string) (int64, error)
 	return rev.Int64, nil
 }
 
-func (s *PgStore) WatchFrom(ctx context.Context, ns string, sinceRevision int64) ([]ChangeEvent, int64, error) {
+func (s *PgStore) WatchFrom(ctx context.Context, region string, sinceRevision int64) ([]ChangeEvent, int64, error) {
 	// Simple short-poll: query once and return immediately.
-	return s.queryChanges(ctx, ns, sinceRevision)
+	return s.queryChanges(ctx, region, sinceRevision)
 }
 
-func (s *PgStore) queryChanges(ctx context.Context, ns string, sinceRevision int64) ([]ChangeEvent, int64, error) {
+func (s *PgStore) queryChanges(ctx context.Context, region string, sinceRevision int64) ([]ChangeEvent, int64, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT revision, kind, name, action, config FROM change_log WHERE namespace = $1 AND revision > $2 ORDER BY revision LIMIT 100`,
-		ns, sinceRevision)
+		`SELECT revision, kind, name, action, config FROM change_log WHERE region = $1 AND revision > $2 ORDER BY revision LIMIT 100`,
+		region, sinceRevision)
 	if err != nil {
 		return nil, 0, fmt.Errorf("pg query changes: %w", err)
 	}
@@ -749,47 +749,47 @@ func (s *PgStore) queryChanges(ctx context.Context, ns string, sinceRevision int
 	return events, maxRev, rows.Err()
 }
 
-// Namespaces
-// ListNamespaces returns all registered namespaces.
-func (s *PgStore) ListNamespaces(ctx context.Context) ([]string, error) {
+// Regions
+// ListRegions returns all registered regions.
+func (s *PgStore) ListRegions(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT name FROM namespaces ORDER BY name`)
+		`SELECT name FROM regions ORDER BY name`)
 	if err != nil {
-		return nil, fmt.Errorf("pg list namespaces: %w", err)
+		return nil, fmt.Errorf("pg list regions: %w", err)
 	}
 	defer rows.Close()
 
 	var result []string
 	for rows.Next() {
-		var ns string
-		if err := rows.Scan(&ns); err != nil {
-			return nil, fmt.Errorf("pg scan namespace: %w", err)
+		var region string
+		if err := rows.Scan(&region); err != nil {
+			return nil, fmt.Errorf("pg scan region: %w", err)
 		}
-		result = append(result, ns)
+		result = append(result, region)
 	}
 	return result, rows.Err()
 }
 
-// CreateNamespace inserts a new namespace. Returns error if it already exists.
-func (s *PgStore) CreateNamespace(ctx context.Context, name string) error {
+// CreateRegion inserts a new region. Returns error if it already exists.
+func (s *PgStore) CreateRegion(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO namespaces (name) VALUES ($1)`, name)
+		`INSERT INTO regions (name) VALUES ($1)`, name)
 	if err != nil {
-		return fmt.Errorf("pg create namespace: %w", err)
+		return fmt.Errorf("pg create region: %w", err)
 	}
 	return nil
 }
 
 // Shared helpers
-func (s *PgStore) nextVersion(ctx context.Context, tx *sql.Tx, ns, kind, name string) (int64, error) {
-	return s.nextVersionTx(ctx, tx, ns, kind, name)
+func (s *PgStore) nextVersion(ctx context.Context, tx *sql.Tx, region, kind, name string) (int64, error) {
+	return s.nextVersionTx(ctx, tx, region, kind, name)
 }
 
-func (s *PgStore) nextVersionTx(ctx context.Context, tx *sql.Tx, ns, kind, name string) (int64, error) {
+func (s *PgStore) nextVersionTx(ctx context.Context, tx *sql.Tx, region, kind, name string) (int64, error) {
 	var maxVer sql.NullInt64
 	err := tx.QueryRowContext(ctx,
-		`SELECT MAX(version) FROM config_history WHERE namespace = $1 AND kind = $2 AND name = $3`,
-		ns, kind, name).Scan(&maxVer)
+		`SELECT MAX(version) FROM config_history WHERE region = $1 AND kind = $2 AND name = $3`,
+		region, kind, name).Scan(&maxVer)
 	if err != nil {
 		return 0, fmt.Errorf("pg next version: %w", err)
 	}
@@ -799,11 +799,11 @@ func (s *PgStore) nextVersionTx(ctx context.Context, tx *sql.Tx, ns, kind, name 
 	return maxVer.Int64 + 1, nil
 }
 
-func (s *PgStore) getHistory(ctx context.Context, ns, kind, name string) ([]HistoryEntry, error) {
+func (s *PgStore) getHistory(ctx context.Context, region, kind, name string) ([]HistoryEntry, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT version, created_at, kind, name, action, operator, config FROM config_history
-		 WHERE namespace = $1 AND kind = $2 AND name = $3 ORDER BY version DESC LIMIT $4`,
-		ns, kind, name, s.maxHistory)
+		 WHERE region = $1 AND kind = $2 AND name = $3 ORDER BY version DESC LIMIT $4`,
+		region, kind, name, s.maxHistory)
 	if err != nil {
 		return nil, fmt.Errorf("pg get history: %w", err)
 	}
@@ -835,13 +835,13 @@ func (s *PgStore) getHistory(ctx context.Context, ns, kind, name string) ([]Hist
 	return entries, rows.Err()
 }
 
-func (s *PgStore) getVersion(ctx context.Context, ns, kind, name string, version int64) (*HistoryEntry, error) {
+func (s *PgStore) getVersion(ctx context.Context, region, kind, name string, version int64) (*HistoryEntry, error) {
 	var e HistoryEntry
 	var data []byte
 	err := s.db.QueryRowContext(ctx,
 		`SELECT version, created_at, kind, name, action, operator, config FROM config_history
-		 WHERE namespace = $1 AND kind = $2 AND name = $3 AND version = $4`,
-		ns, kind, name, version).Scan(&e.Version, &e.Timestamp, &e.Kind, &e.Name, &e.Action, &e.Operator, &data)
+		 WHERE region = $1 AND kind = $2 AND name = $3 AND version = $4`,
+		region, kind, name, version).Scan(&e.Version, &e.Timestamp, &e.Kind, &e.Name, &e.Action, &e.Operator, &data)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -866,20 +866,20 @@ func (s *PgStore) getVersion(ctx context.Context, ns, kind, name string, version
 }
 
 // Audit log (global change event stream)
-func (s *PgStore) ListAuditLog(ctx context.Context, ns string, limit, offset int) ([]AuditEntry, int64, error) {
+func (s *PgStore) ListAuditLog(ctx context.Context, region string, limit, offset int) ([]AuditEntry, int64, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 
 	var total int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM change_log WHERE namespace = $1`, ns).Scan(&total)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM change_log WHERE region = $1`, region).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("pg count audit: %w", err)
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT revision, kind, name, action, operator, created_at FROM change_log WHERE namespace = $1 ORDER BY revision DESC LIMIT $2 OFFSET $3`,
-		ns, limit, offset)
+		`SELECT revision, kind, name, action, operator, created_at FROM change_log WHERE region = $1 ORDER BY revision DESC LIMIT $2 OFFSET $3`,
+		region, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("pg list audit: %w", err)
 	}
@@ -896,31 +896,31 @@ func (s *PgStore) ListAuditLog(ctx context.Context, ns string, limit, offset int
 	return entries, total, rows.Err()
 }
 
-func (s *PgStore) InsertAuditLog(ctx context.Context, ns, kind, name, action, operator string) error {
+func (s *PgStore) InsertAuditLog(ctx context.Context, region, kind, name, action, operator string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO change_log (namespace, kind, name, action, operator) VALUES ($1, $2, $3, $4, $5)`,
-		ns, kind, name, action, operator)
+		`INSERT INTO change_log (region, kind, name, action, operator) VALUES ($1, $2, $3, $4, $5)`,
+		region, kind, name, action, operator)
 	if err != nil {
 		return fmt.Errorf("pg insert audit log: %w", err)
 	}
 	return nil
 }
 
-func (s *PgStore) pruneHistory(ctx context.Context, ns, kind, name string) {
+func (s *PgStore) pruneHistory(ctx context.Context, region, kind, name string) {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM config_history WHERE id IN (
 			SELECT id FROM config_history
-			WHERE namespace = $1 AND kind = $2 AND name = $3
+			WHERE region = $1 AND kind = $2 AND name = $3
 			ORDER BY version DESC
 			OFFSET $4
-		)`, ns, kind, name, s.maxHistory)
+		)`, region, kind, name, s.maxHistory)
 	if err != nil {
-		s.logger.Warnf("prune history (%s/%s/%s): %v", ns, kind, name, err)
+		s.logger.Warnf("prune history (%s/%s/%s): %v", region, kind, name, err)
 	}
 }
 
-// Status (namespace-scoped)
-func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instances []GatewayInstanceStatus) error {
+// Status (region-scoped)
+func (s *PgStore) UpsertGatewayInstances(ctx context.Context, region string, instances []GatewayInstanceStatus) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("pg begin tx: %w", err)
@@ -928,12 +928,12 @@ func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instanc
 	defer tx.Rollback()
 
 	if len(instances) == 0 {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM gateway_instances WHERE namespace = $1`, ns); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM gateway_instances WHERE region = $1`, region); err != nil {
 			return fmt.Errorf("pg clear instances: %w", err)
 		}
 	} else {
 		ids := make([]any, len(instances)+1)
-		ids[0] = ns
+		ids[0] = region
 		placeholders := ""
 		for i, inst := range instances {
 			ids[i+1] = inst.ID
@@ -942,7 +942,7 @@ func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instanc
 			}
 			placeholders += fmt.Sprintf("$%d", i+2)
 		}
-		q := fmt.Sprintf(`DELETE FROM gateway_instances WHERE namespace = $1 AND id NOT IN (%s)`, placeholders)
+		q := fmt.Sprintf(`DELETE FROM gateway_instances WHERE region = $1 AND id NOT IN (%s)`, placeholders)
 		if _, err := tx.ExecContext(ctx, q, ids...); err != nil {
 			return fmt.Errorf("pg prune stale instances: %w", err)
 		}
@@ -950,9 +950,9 @@ func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instanc
 
 	for _, inst := range instances {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO gateway_instances (namespace, id, status, started_at, registered_at, last_keepalive_at, config_revision, last_seen_at, updated_at)
+			INSERT INTO gateway_instances (region, id, status, started_at, registered_at, last_keepalive_at, config_revision, last_seen_at, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-			ON CONFLICT (namespace, id) DO UPDATE SET
+			ON CONFLICT (region, id) DO UPDATE SET
 				status = EXCLUDED.status,
 				started_at = EXCLUDED.started_at,
 				registered_at = EXCLUDED.registered_at,
@@ -960,7 +960,7 @@ func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instanc
 				config_revision = EXCLUDED.config_revision,
 				last_seen_at = EXCLUDED.last_seen_at,
 				updated_at = NOW()`,
-			ns, inst.ID, inst.Status, inst.StartedAt, inst.RegisteredAt,
+			region, inst.ID, inst.Status, inst.StartedAt, inst.RegisteredAt,
 			inst.LastKeepaliveAt, inst.ConfigRevision, inst.LastSeenAt)
 		if err != nil {
 			return fmt.Errorf("pg upsert instance %s: %w", inst.ID, err)
@@ -970,10 +970,10 @@ func (s *PgStore) UpsertGatewayInstances(ctx context.Context, ns string, instanc
 	return tx.Commit()
 }
 
-func (s *PgStore) ListGatewayInstances(ctx context.Context, ns string) ([]GatewayInstanceStatus, error) {
+func (s *PgStore) ListGatewayInstances(ctx context.Context, region string) ([]GatewayInstanceStatus, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, status, started_at, registered_at, last_keepalive_at, config_revision, last_seen_at, updated_at
-		 FROM gateway_instances WHERE namespace = $1 ORDER BY id`, ns)
+		 FROM gateway_instances WHERE region = $1 ORDER BY id`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list instances: %w", err)
 	}
@@ -991,29 +991,29 @@ func (s *PgStore) ListGatewayInstances(ctx context.Context, ns string) ([]Gatewa
 	return result, rows.Err()
 }
 
-func (s *PgStore) UpsertControllerStatus(ctx context.Context, ns string, ctrl *ControllerStatus) error {
+func (s *PgStore) UpsertControllerStatus(ctx context.Context, region string, ctrl *ControllerStatus) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO controller_status (namespace, id, status, is_leader, started_at, last_heartbeat_at, config_revision, updated_at)
+		INSERT INTO controller_status (region, id, status, is_leader, started_at, last_heartbeat_at, config_revision, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-		ON CONFLICT (namespace, id) DO UPDATE SET
+		ON CONFLICT (region, id) DO UPDATE SET
 			status = EXCLUDED.status,
 			is_leader = EXCLUDED.is_leader,
 			started_at = EXCLUDED.started_at,
 			last_heartbeat_at = EXCLUDED.last_heartbeat_at,
 			config_revision = EXCLUDED.config_revision,
 			updated_at = NOW()`,
-		ns, ctrl.ID, ctrl.Status, ctrl.IsLeader, ctrl.StartedAt, ctrl.LastHeartbeatAt, ctrl.ConfigRevision)
+		region, ctrl.ID, ctrl.Status, ctrl.IsLeader, ctrl.StartedAt, ctrl.LastHeartbeatAt, ctrl.ConfigRevision)
 	if err != nil {
 		return fmt.Errorf("pg upsert controller: %w", err)
 	}
 	return nil
 }
 
-func (s *PgStore) GetControllerStatus(ctx context.Context, ns string) (*ControllerStatus, error) {
+func (s *PgStore) GetControllerStatus(ctx context.Context, region string) (*ControllerStatus, error) {
 	var ctrl ControllerStatus
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, status, is_leader, started_at, last_heartbeat_at, config_revision, updated_at
-		 FROM controller_status WHERE namespace = $1 ORDER BY updated_at DESC LIMIT 1`, ns).
+		 FROM controller_status WHERE region = $1 ORDER BY updated_at DESC LIMIT 1`, region).
 		Scan(&ctrl.ID, &ctrl.Status, &ctrl.IsLeader, &ctrl.StartedAt, &ctrl.LastHeartbeatAt, &ctrl.ConfigRevision, &ctrl.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1033,7 +1033,7 @@ func (s *PgStore) MarkStaleInstances(ctx context.Context, threshold time.Duratio
 	rows, err := s.db.QueryContext(ctx,
 		`UPDATE gateway_instances SET status = 'offline'
 		 WHERE status != 'offline' AND updated_at < NOW() - $1::interval
-		 RETURNING namespace, id`,
+		 RETURNING region, id`,
 		threshold.String())
 	if err != nil {
 		return nil, fmt.Errorf("mark stale instances: %w", err)
@@ -1043,7 +1043,7 @@ func (s *PgStore) MarkStaleInstances(ctx context.Context, threshold time.Duratio
 	var result []StaleEntry
 	for rows.Next() {
 		var e StaleEntry
-		if err := rows.Scan(&e.Namespace, &e.ID); err != nil {
+		if err := rows.Scan(&e.Region, &e.ID); err != nil {
 			return nil, fmt.Errorf("scan stale instance: %w", err)
 		}
 		result = append(result, e)
@@ -1057,7 +1057,7 @@ func (s *PgStore) MarkStaleControllers(ctx context.Context, threshold time.Durat
 	rows, err := s.db.QueryContext(ctx,
 		`UPDATE controller_status SET status = 'offline'
 		 WHERE status != 'offline' AND updated_at < NOW() - $1::interval
-		 RETURNING namespace, id`,
+		 RETURNING region, id`,
 		threshold.String())
 	if err != nil {
 		return nil, fmt.Errorf("mark stale controllers: %w", err)
@@ -1067,7 +1067,7 @@ func (s *PgStore) MarkStaleControllers(ctx context.Context, threshold time.Durat
 	var result []StaleEntry
 	for rows.Next() {
 		var e StaleEntry
-		if err := rows.Scan(&e.Namespace, &e.ID); err != nil {
+		if err := rows.Scan(&e.Region, &e.ID); err != nil {
 			return nil, fmt.Errorf("scan stale controller: %w", err)
 		}
 		result = append(result, e)
@@ -1075,10 +1075,10 @@ func (s *PgStore) MarkStaleControllers(ctx context.Context, threshold time.Durat
 	return result, rows.Err()
 }
 
-// Grafana dashboards (namespace-scoped)
-func (s *PgStore) ListGrafanaDashboards(ctx context.Context, ns string) ([]GrafanaDashboard, error) {
+// Grafana dashboards (region-scoped)
+func (s *PgStore) ListGrafanaDashboards(ctx context.Context, region string) ([]GrafanaDashboard, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, url FROM grafana_dashboards WHERE namespace = $1 ORDER BY id`, ns)
+		`SELECT id, name, url FROM grafana_dashboards WHERE region = $1 ORDER BY id`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list grafana dashboards: %w", err)
 	}
@@ -1095,11 +1095,11 @@ func (s *PgStore) ListGrafanaDashboards(ctx context.Context, ns string) ([]Grafa
 	return result, rows.Err()
 }
 
-func (s *PgStore) PutGrafanaDashboard(ctx context.Context, ns string, d *GrafanaDashboard) (*GrafanaDashboard, error) {
+func (s *PgStore) PutGrafanaDashboard(ctx context.Context, region string, d *GrafanaDashboard) (*GrafanaDashboard, error) {
 	if d.ID > 0 {
 		_, err := s.db.ExecContext(ctx,
-			`UPDATE grafana_dashboards SET name = $1, url = $2 WHERE id = $3 AND namespace = $4`,
-			d.Name, d.URL, d.ID, ns)
+			`UPDATE grafana_dashboards SET name = $1, url = $2 WHERE id = $3 AND region = $4`,
+			d.Name, d.URL, d.ID, region)
 		if err != nil {
 			return nil, fmt.Errorf("pg update grafana dashboard: %w", err)
 		}
@@ -1107,8 +1107,8 @@ func (s *PgStore) PutGrafanaDashboard(ctx context.Context, ns string, d *Grafana
 	}
 	var id int64
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO grafana_dashboards (namespace, name, url) VALUES ($1, $2, $3) RETURNING id`,
-		ns, d.Name, d.URL).Scan(&id)
+		`INSERT INTO grafana_dashboards (region, name, url) VALUES ($1, $2, $3) RETURNING id`,
+		region, d.Name, d.URL).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("pg insert grafana dashboard: %w", err)
 	}
@@ -1116,9 +1116,9 @@ func (s *PgStore) PutGrafanaDashboard(ctx context.Context, ns string, d *Grafana
 	return d, nil
 }
 
-func (s *PgStore) DeleteGrafanaDashboard(ctx context.Context, ns string, id int64) error {
+func (s *PgStore) DeleteGrafanaDashboard(ctx context.Context, region string, id int64) error {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM grafana_dashboards WHERE id = $1 AND namespace = $2`, id, ns)
+		`DELETE FROM grafana_dashboards WHERE id = $1 AND region = $2`, id, region)
 	if err != nil {
 		return fmt.Errorf("pg delete grafana dashboard: %w", err)
 	}
@@ -1129,11 +1129,11 @@ func (s *PgStore) DeleteGrafanaDashboard(ctx context.Context, ns string, id int6
 	return nil
 }
 
-// API Credentials (namespace-scoped, AK globally unique)
-func (s *PgStore) ListAPICredentials(ctx context.Context, ns string) ([]APICredential, error) {
+// API Credentials (region-scoped, AK globally unique)
+func (s *PgStore) ListAPICredentials(ctx context.Context, region string) ([]APICredential, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, namespace, access_key, description, scopes, enabled, created_at, updated_at
-		 FROM api_credentials WHERE namespace = $1 ORDER BY id`, ns)
+		`SELECT id, region, access_key, description, scopes, enabled, created_at, updated_at
+		 FROM api_credentials WHERE region = $1 ORDER BY id`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list api credentials: %w", err)
 	}
@@ -1142,7 +1142,7 @@ func (s *PgStore) ListAPICredentials(ctx context.Context, ns string) ([]APICrede
 	var result []APICredential
 	for rows.Next() {
 		var c APICredential
-		if err := rows.Scan(&c.ID, &c.Namespace, &c.AccessKey, &c.Description, pq.Array(&c.Scopes), &c.Enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Region, &c.AccessKey, &c.Description, pq.Array(&c.Scopes), &c.Enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("pg scan api credential: %w", err)
 		}
 		if c.Scopes == nil {
@@ -1157,9 +1157,9 @@ func (s *PgStore) ListAPICredentials(ctx context.Context, ns string) ([]APICrede
 func (s *PgStore) GetAPICredentialByAK(ctx context.Context, accessKey string) (*APICredential, error) {
 	var c APICredential
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, namespace, access_key, secret_key, description, scopes, enabled, created_at, updated_at
+		`SELECT id, region, access_key, secret_key, description, scopes, enabled, created_at, updated_at
 		 FROM api_credentials WHERE access_key = $1`, accessKey).
-		Scan(&c.ID, &c.Namespace, &c.AccessKey, &c.SecretKey, &c.Description, pq.Array(&c.Scopes), &c.Enabled, &c.CreatedAt, &c.UpdatedAt)
+		Scan(&c.ID, &c.Region, &c.AccessKey, &c.SecretKey, &c.Description, pq.Array(&c.Scopes), &c.Enabled, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1172,16 +1172,16 @@ func (s *PgStore) GetAPICredentialByAK(ctx context.Context, accessKey string) (*
 	return &c, nil
 }
 
-func (s *PgStore) CreateAPICredential(ctx context.Context, ns string, cred *APICredential) (*APICredential, error) {
-	cred.Namespace = ns
+func (s *PgStore) CreateAPICredential(ctx context.Context, region string, cred *APICredential) (*APICredential, error) {
+	cred.Region = region
 	if cred.Scopes == nil {
 		cred.Scopes = []string{}
 	}
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO api_credentials (namespace, access_key, secret_key, description, scopes, enabled)
+		`INSERT INTO api_credentials (region, access_key, secret_key, description, scopes, enabled)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, created_at, updated_at`,
-		ns, cred.AccessKey, cred.SecretKey, cred.Description, pq.Array(cred.Scopes), cred.Enabled).
+		region, cred.AccessKey, cred.SecretKey, cred.Description, pq.Array(cred.Scopes), cred.Enabled).
 		Scan(&cred.ID, &cred.CreatedAt, &cred.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("pg create api credential: %w", err)
@@ -1189,23 +1189,23 @@ func (s *PgStore) CreateAPICredential(ctx context.Context, ns string, cred *APIC
 	return cred, nil
 }
 
-func (s *PgStore) UpdateAPICredential(ctx context.Context, ns string, cred *APICredential) error {
+func (s *PgStore) UpdateAPICredential(ctx context.Context, region string, cred *APICredential) error {
 	if cred.Scopes == nil {
 		cred.Scopes = []string{}
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE api_credentials SET description = $1, enabled = $2, scopes = $3, updated_at = NOW()
-		 WHERE id = $4 AND namespace = $5`,
-		cred.Description, cred.Enabled, pq.Array(cred.Scopes), cred.ID, ns)
+		 WHERE id = $4 AND region = $5`,
+		cred.Description, cred.Enabled, pq.Array(cred.Scopes), cred.ID, region)
 	if err != nil {
 		return fmt.Errorf("pg update api credential: %w", err)
 	}
 	return nil
 }
 
-func (s *PgStore) DeleteAPICredential(ctx context.Context, ns string, id int64) error {
+func (s *PgStore) DeleteAPICredential(ctx context.Context, region string, id int64) error {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM api_credentials WHERE id = $1 AND namespace = $2`, id, ns)
+		`DELETE FROM api_credentials WHERE id = $1 AND region = $2`, id, region)
 	if err != nil {
 		return fmt.Errorf("pg delete api credential: %w", err)
 	}
@@ -1486,64 +1486,64 @@ func generateKeyID() string {
 	return fmt.Sprintf("k-%x", b)
 }
 
-// Namespace Members
-func (s *PgStore) ListNamespaceMembers(ctx context.Context, ns string) ([]NamespaceMember, error) {
+// Region Members
+func (s *PgStore) ListRegionMembers(ctx context.Context, region string) ([]RegionMember, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.namespace, m.user_sub, m.role, u.username, u.email, u.name
-		FROM namespace_members m
+		SELECT m.region, m.user_sub, m.role, u.username, u.email, u.name
+		FROM region_members m
 		JOIN users u ON u.sub = m.user_sub
-		WHERE m.namespace = $1
-		ORDER BY u.username`, ns)
+		WHERE m.region = $1
+		ORDER BY u.username`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list ns members: %w", err)
 	}
 	defer rows.Close()
 
-	var result []NamespaceMember
+	var result []RegionMember
 	for rows.Next() {
-		var m NamespaceMember
-		if err := rows.Scan(&m.Namespace, &m.UserSub, &m.Role, &m.Username, &m.Email, &m.Name); err != nil {
-			return nil, fmt.Errorf("pg scan ns member: %w", err)
+		var m RegionMember
+		if err := rows.Scan(&m.Region, &m.UserSub, &m.Role, &m.Username, &m.Email, &m.Name); err != nil {
+			return nil, fmt.Errorf("pg scan region member: %w", err)
 		}
 		result = append(result, m)
 	}
 	return result, rows.Err()
 }
 
-func (s *PgStore) GetNamespaceMember(ctx context.Context, ns, userSub string) (*NamespaceMember, error) {
-	var m NamespaceMember
+func (s *PgStore) GetRegionMember(ctx context.Context, region, userSub string) (*RegionMember, error) {
+	var m RegionMember
 	err := s.db.QueryRowContext(ctx, `
-		SELECT m.namespace, m.user_sub, m.role, u.username, u.email, u.name
-		FROM namespace_members m
+		SELECT m.region, m.user_sub, m.role, u.username, u.email, u.name
+		FROM region_members m
 		JOIN users u ON u.sub = m.user_sub
-		WHERE m.namespace = $1 AND m.user_sub = $2`, ns, userSub).
-		Scan(&m.Namespace, &m.UserSub, &m.Role, &m.Username, &m.Email, &m.Name)
+		WHERE m.region = $1 AND m.user_sub = $2`, region, userSub).
+		Scan(&m.Region, &m.UserSub, &m.Role, &m.Username, &m.Email, &m.Name)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("pg get ns member: %w", err)
+		return nil, fmt.Errorf("pg get region member: %w", err)
 	}
 	return &m, nil
 }
 
-func (s *PgStore) SetNamespaceMember(ctx context.Context, ns, userSub string, role NamespaceRole) error {
+func (s *PgStore) SetRegionMember(ctx context.Context, region, userSub string, role RegionRole) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO namespace_members (namespace, user_sub, role)
+		INSERT INTO region_members (region, user_sub, role)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (namespace, user_sub) DO UPDATE SET role = EXCLUDED.role`,
-		ns, userSub, string(role))
+		ON CONFLICT (region, user_sub) DO UPDATE SET role = EXCLUDED.role`,
+		region, userSub, string(role))
 	if err != nil {
-		return fmt.Errorf("pg set ns member: %w", err)
+		return fmt.Errorf("pg set region member: %w", err)
 	}
 	return nil
 }
 
-func (s *PgStore) RemoveNamespaceMember(ctx context.Context, ns, userSub string) error {
+func (s *PgStore) RemoveRegionMember(ctx context.Context, region, userSub string) error {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM namespace_members WHERE namespace = $1 AND user_sub = $2`, ns, userSub)
+		`DELETE FROM region_members WHERE region = $1 AND user_sub = $2`, region, userSub)
 	if err != nil {
-		return fmt.Errorf("pg remove ns member: %w", err)
+		return fmt.Errorf("pg remove region member: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -1552,11 +1552,11 @@ func (s *PgStore) RemoveNamespaceMember(ctx context.Context, ns, userSub string)
 	return nil
 }
 
-// Group Bindings (OIDC group → namespace role)
+// Group Bindings (OIDC group → region role)
 
-func (s *PgStore) ListGroupBindings(ctx context.Context, ns string) ([]GroupBinding, error) {
+func (s *PgStore) ListGroupBindings(ctx context.Context, region string) ([]GroupBinding, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, namespace, group_name, role FROM group_bindings WHERE namespace = $1 ORDER BY group_name`, ns)
+		`SELECT id, region, group_name, role FROM group_bindings WHERE region = $1 ORDER BY group_name`, region)
 	if err != nil {
 		return nil, fmt.Errorf("pg list group bindings: %w", err)
 	}
@@ -1565,7 +1565,7 @@ func (s *PgStore) ListGroupBindings(ctx context.Context, ns string) ([]GroupBind
 	var result []GroupBinding
 	for rows.Next() {
 		var b GroupBinding
-		if err := rows.Scan(&b.ID, &b.Namespace, &b.Group, &b.Role); err != nil {
+		if err := rows.Scan(&b.ID, &b.Region, &b.Group, &b.Role); err != nil {
 			return nil, fmt.Errorf("pg scan group binding: %w", err)
 		}
 		result = append(result, b)
@@ -1573,21 +1573,21 @@ func (s *PgStore) ListGroupBindings(ctx context.Context, ns string) ([]GroupBind
 	return result, rows.Err()
 }
 
-func (s *PgStore) SetGroupBinding(ctx context.Context, ns, group string, role NamespaceRole) error {
+func (s *PgStore) SetGroupBinding(ctx context.Context, region, group string, role RegionRole) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO group_bindings (namespace, group_name, role)
+		INSERT INTO group_bindings (region, group_name, role)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (namespace, group_name) DO UPDATE SET role = EXCLUDED.role`,
-		ns, group, string(role))
+		ON CONFLICT (region, group_name) DO UPDATE SET role = EXCLUDED.role`,
+		region, group, string(role))
 	if err != nil {
 		return fmt.Errorf("pg set group binding: %w", err)
 	}
 	return nil
 }
 
-func (s *PgStore) RemoveGroupBinding(ctx context.Context, ns, group string) error {
+func (s *PgStore) RemoveGroupBinding(ctx context.Context, region, group string) error {
 	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM group_bindings WHERE namespace = $1 AND group_name = $2`, ns, group)
+		`DELETE FROM group_bindings WHERE region = $1 AND group_name = $2`, region, group)
 	if err != nil {
 		return fmt.Errorf("pg remove group binding: %w", err)
 	}
@@ -1600,13 +1600,13 @@ func (s *PgStore) RemoveGroupBinding(ctx context.Context, ns, group string) erro
 
 // GetEffectiveRoleByGroups returns the highest-privilege role among all bindings for the given groups.
 // Role priority: owner > editor > viewer. Returns nil if no binding matches.
-func (s *PgStore) GetEffectiveRoleByGroups(ctx context.Context, ns string, groups []string) (*NamespaceRole, error) {
+func (s *PgStore) GetEffectiveRoleByGroups(ctx context.Context, region string, groups []string) (*RegionRole, error) {
 	if len(groups) == 0 {
 		return nil, nil
 	}
 
 	// Build placeholders for the group list.
-	args := []any{ns}
+	args := []any{region}
 	placeholders := ""
 	for i, g := range groups {
 		if i > 0 {
@@ -1617,16 +1617,16 @@ func (s *PgStore) GetEffectiveRoleByGroups(ctx context.Context, ns string, group
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT role FROM group_bindings WHERE namespace = $1 AND group_name IN (%s)`, placeholders),
+		fmt.Sprintf(`SELECT role FROM group_bindings WHERE region = $1 AND group_name IN (%s)`, placeholders),
 		args...)
 	if err != nil {
 		return nil, fmt.Errorf("pg get effective role by groups: %w", err)
 	}
 	defer rows.Close()
 
-	var best *NamespaceRole
+	var best *RegionRole
 	for rows.Next() {
-		var role NamespaceRole
+		var role RegionRole
 		if err := rows.Scan(&role); err != nil {
 			return nil, fmt.Errorf("pg scan group role: %w", err)
 		}
@@ -1638,7 +1638,7 @@ func (s *PgStore) GetEffectiveRoleByGroups(ctx context.Context, ns string, group
 }
 
 // RolePriority returns numeric priority for role comparison.
-func RolePriority(r NamespaceRole) int {
+func RolePriority(r RegionRole) int {
 	switch r {
 	case RoleOwner:
 		return 3

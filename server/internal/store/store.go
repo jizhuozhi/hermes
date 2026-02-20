@@ -15,23 +15,23 @@ import (
 // the resource concurrently.
 var ErrConflict = errors.New("optimistic concurrency conflict: resource has been modified by another user")
 
-// DefaultNamespace is used when no namespace is specified.
-const DefaultNamespace = "default"
+// DefaultRegion is used when no region is specified.
+const DefaultRegion = "default"
 
-// namespaceRe matches valid namespace names: lowercase alphanumeric, hyphens,
+// regionRe matches valid region names: lowercase alphanumeric, hyphens,
 // 1-63 characters, must start and end with alphanumeric.
-var namespaceRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+var regionRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
-// ValidateNamespaceName returns an error message if the name is invalid, or "" if valid.
-func ValidateNamespaceName(name string) string {
+// ValidateRegionName returns an error message if the name is invalid, or "" if valid.
+func ValidateRegionName(name string) string {
 	if name == "" {
-		return "namespace name is required"
+		return "region name is required"
 	}
 	if len(name) > 63 {
-		return "namespace name must be at most 63 characters"
+		return "region name must be at most 63 characters"
 	}
-	if !namespaceRe.MatchString(name) {
-		return "namespace name must consist of lowercase alphanumeric characters or hyphens, and must start and end with an alphanumeric character"
+	if !regionRe.MatchString(name) {
+		return "region name must consist of lowercase alphanumeric characters or hyphens, and must start and end with an alphanumeric character"
 	}
 	return ""
 }
@@ -49,53 +49,53 @@ type HistoryEntry struct {
 }
 
 // Store is the interface that both handlers and the watch API depend on.
-// All data methods are namespace-scoped.
+// All data methods are region-scoped.
 type Store interface {
 	Close()
 
 	// Domain CRUD
-	ListDomains(ctx context.Context, ns string) ([]model.DomainConfig, error)
-	GetDomain(ctx context.Context, ns, name string) (*model.DomainConfig, int64, error) // returns (config, resourceVersion, err)
-	PutDomain(ctx context.Context, ns string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error)
-	DeleteDomain(ctx context.Context, ns, name, operator string) (int64, error)
+	ListDomains(ctx context.Context, region string) ([]model.DomainConfig, error)
+	GetDomain(ctx context.Context, region, name string) (*model.DomainConfig, int64, error) // returns (config, resourceVersion, err)
+	PutDomain(ctx context.Context, region string, domain *model.DomainConfig, action, operator string, expectedVersion int64) (int64, error)
+	DeleteDomain(ctx context.Context, region, name, operator string) (int64, error)
 
 	// Cluster CRUD
-	ListClusters(ctx context.Context, ns string) ([]model.ClusterConfig, error)
-	GetCluster(ctx context.Context, ns, name string) (*model.ClusterConfig, int64, error) // returns (config, resourceVersion, err)
-	PutCluster(ctx context.Context, ns string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error)
-	DeleteCluster(ctx context.Context, ns, name, operator string) (int64, error)
+	ListClusters(ctx context.Context, region string) ([]model.ClusterConfig, error)
+	GetCluster(ctx context.Context, region, name string) (*model.ClusterConfig, int64, error) // returns (config, resourceVersion, err)
+	PutCluster(ctx context.Context, region string, cluster *model.ClusterConfig, action, operator string, expectedVersion int64) (int64, error)
+	DeleteCluster(ctx context.Context, region, name, operator string) (int64, error)
 
 	// Bulk
-	PutAllConfig(ctx context.Context, ns string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error)
-	GetConfig(ctx context.Context, ns string) (*model.GatewayConfig, error)
+	PutAllConfig(ctx context.Context, region string, domains []model.DomainConfig, clusters []model.ClusterConfig, operator string) (int64, error)
+	GetConfig(ctx context.Context, region string) (*model.GatewayConfig, error)
 
 	// Per-domain History
-	GetDomainHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error)
-	GetDomainVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error)
-	RollbackDomain(ctx context.Context, ns, name string, version int64, operator string) (int64, error)
+	GetDomainHistory(ctx context.Context, region, name string) ([]HistoryEntry, error)
+	GetDomainVersion(ctx context.Context, region, name string, version int64) (*HistoryEntry, error)
+	RollbackDomain(ctx context.Context, region, name string, version int64, operator string) (int64, error)
 
 	// Per-cluster History
-	GetClusterHistory(ctx context.Context, ns, name string) ([]HistoryEntry, error)
-	GetClusterVersion(ctx context.Context, ns, name string, version int64) (*HistoryEntry, error)
-	RollbackCluster(ctx context.Context, ns, name string, version int64, operator string) (int64, error)
+	GetClusterHistory(ctx context.Context, region, name string) ([]HistoryEntry, error)
+	GetClusterVersion(ctx context.Context, region, name string, version int64) (*HistoryEntry, error)
+	RollbackCluster(ctx context.Context, region, name string, version int64, operator string) (int64, error)
 
 	// Audit log (global change event stream)
-	ListAuditLog(ctx context.Context, ns string, limit, offset int) ([]AuditEntry, int64, error)
-	InsertAuditLog(ctx context.Context, ns, kind, name, action, operator string) error
+	ListAuditLog(ctx context.Context, region string, limit, offset int) ([]AuditEntry, int64, error)
+	InsertAuditLog(ctx context.Context, region, kind, name, action, operator string) error
 
 	// Watch (for controller long-poll)
-	CurrentRevision(ctx context.Context, ns string) (int64, error)
-	WatchFrom(ctx context.Context, ns string, sinceRevision int64) ([]ChangeEvent, int64, error)
+	CurrentRevision(ctx context.Context, region string) (int64, error)
+	WatchFrom(ctx context.Context, region string, sinceRevision int64) ([]ChangeEvent, int64, error)
 
-	// Namespaces
-	ListNamespaces(ctx context.Context) ([]string, error)
-	CreateNamespace(ctx context.Context, name string) error
+	// Regions
+	ListRegions(ctx context.Context) ([]string, error)
+	CreateRegion(ctx context.Context, name string) error
 
-	// Status (namespace-scoped)
-	UpsertGatewayInstances(ctx context.Context, ns string, instances []GatewayInstanceStatus) error
-	ListGatewayInstances(ctx context.Context, ns string) ([]GatewayInstanceStatus, error)
-	UpsertControllerStatus(ctx context.Context, ns string, ctrl *ControllerStatus) error
-	GetControllerStatus(ctx context.Context, ns string) (*ControllerStatus, error)
+	// Status (region-scoped)
+	UpsertGatewayInstances(ctx context.Context, region string, instances []GatewayInstanceStatus) error
+	ListGatewayInstances(ctx context.Context, region string) ([]GatewayInstanceStatus, error)
+	UpsertControllerStatus(ctx context.Context, region string, ctrl *ControllerStatus) error
+	GetControllerStatus(ctx context.Context, region string) (*ControllerStatus, error)
 
 	// Stale instance/controller reaper
 	// MarkStaleInstances marks gateway instances as "offline" if their updated_at
@@ -106,17 +106,17 @@ type Store interface {
 	// is older than the given threshold. Same idempotent semantics.
 	MarkStaleControllers(ctx context.Context, threshold time.Duration) ([]StaleEntry, error)
 
-	// Grafana dashboards (namespace-scoped)
-	ListGrafanaDashboards(ctx context.Context, ns string) ([]GrafanaDashboard, error)
-	PutGrafanaDashboard(ctx context.Context, ns string, d *GrafanaDashboard) (*GrafanaDashboard, error)
-	DeleteGrafanaDashboard(ctx context.Context, ns string, id int64) error
+	// Grafana dashboards (region-scoped)
+	ListGrafanaDashboards(ctx context.Context, region string) ([]GrafanaDashboard, error)
+	PutGrafanaDashboard(ctx context.Context, region string, d *GrafanaDashboard) (*GrafanaDashboard, error)
+	DeleteGrafanaDashboard(ctx context.Context, region string, id int64) error
 
-	// API Credentials (namespace-scoped)
-	ListAPICredentials(ctx context.Context, ns string) ([]APICredential, error)
+	// API Credentials (region-scoped)
+	ListAPICredentials(ctx context.Context, region string) ([]APICredential, error)
 	GetAPICredentialByAK(ctx context.Context, accessKey string) (*APICredential, error) // auth lookup is global (AK is globally unique)
-	CreateAPICredential(ctx context.Context, ns string, cred *APICredential) (*APICredential, error)
-	UpdateAPICredential(ctx context.Context, ns string, cred *APICredential) error
-	DeleteAPICredential(ctx context.Context, ns string, id int64) error
+	CreateAPICredential(ctx context.Context, region string, cred *APICredential) (*APICredential, error)
+	UpdateAPICredential(ctx context.Context, region string, cred *APICredential) error
+	DeleteAPICredential(ctx context.Context, region string, id int64) error
 
 	// Users (OIDC-synced or builtin)
 	UpsertUser(ctx context.Context, user *User) error // INSERT sets is_admin; UPDATE preserves existing
@@ -148,29 +148,29 @@ type Store interface {
 	// The old key remains valid for gracePeriod (so in-flight tokens don't break).
 	RotateSigningKey(ctx context.Context, gracePeriod time.Duration) (*JWTSigningKey, error)
 
-	// Namespace Members
-	ListNamespaceMembers(ctx context.Context, ns string) ([]NamespaceMember, error)
-	GetNamespaceMember(ctx context.Context, ns, userSub string) (*NamespaceMember, error)
-	SetNamespaceMember(ctx context.Context, ns, userSub string, role NamespaceRole) error
-	RemoveNamespaceMember(ctx context.Context, ns, userSub string) error
+	// Region Members
+	ListRegionMembers(ctx context.Context, region string) ([]RegionMember, error)
+	GetRegionMember(ctx context.Context, region, userSub string) (*RegionMember, error)
+	SetRegionMember(ctx context.Context, region, userSub string, role RegionRole) error
+	RemoveRegionMember(ctx context.Context, region, userSub string) error
 
-	// Group Bindings (OIDC group → namespace role)
-	ListGroupBindings(ctx context.Context, ns string) ([]GroupBinding, error)
-	SetGroupBinding(ctx context.Context, ns, group string, role NamespaceRole) error
-	RemoveGroupBinding(ctx context.Context, ns, group string) error
-	// GetEffectiveRoleByGroups returns the highest-privilege role granted to any of the given groups in a namespace.
-	GetEffectiveRoleByGroups(ctx context.Context, ns string, groups []string) (*NamespaceRole, error)
+	// Group Bindings (OIDC group → region role)
+	ListGroupBindings(ctx context.Context, region string) ([]GroupBinding, error)
+	SetGroupBinding(ctx context.Context, region, group string, role RegionRole) error
+	RemoveGroupBinding(ctx context.Context, region, group string) error
+	// GetEffectiveRoleByGroups returns the highest-privilege role granted to any of the given groups in a region.
+	GetEffectiveRoleByGroups(ctx context.Context, region string, groups []string) (*RegionRole, error)
 }
 
 // ChangeEvent represents a single config change for the watch API.
 type ChangeEvent struct {
-	Revision  int64                `json:"revision"`
-	Kind      string               `json:"kind"` // "domain" or "cluster"
-	Name      string               `json:"name"`
-	Action    string               `json:"action"` // "create", "update", "delete", "rollback", "import"
-	Operator  string               `json:"operator,omitempty"`
-	Domain    *model.DomainConfig  `json:"domain,omitempty"`
-	Cluster   *model.ClusterConfig `json:"cluster,omitempty"`
+	Revision int64                `json:"revision"`
+	Kind     string               `json:"kind"` // "domain" or "cluster"
+	Name     string               `json:"name"`
+	Action   string               `json:"action"` // "create", "update", "delete", "rollback", "import"
+	Operator string               `json:"operator,omitempty"`
+	Domain   *model.DomainConfig  `json:"domain,omitempty"`
+	Cluster  *model.ClusterConfig `json:"cluster,omitempty"`
 }
 
 // AuditEntry represents a global change event for audit purposes.
@@ -209,8 +209,8 @@ type ControllerStatus struct {
 
 // StaleEntry identifies a component that was marked offline by the reaper.
 type StaleEntry struct {
-	Namespace string `json:"namespace"`
-	ID        string `json:"id"`
+	Region string `json:"region"`
+	ID     string `json:"id"`
 }
 
 // Settings (shared across replicas)
@@ -236,8 +236,8 @@ const (
 	ScopeMemberWrite     = "member:write"
 	ScopeAuditRead       = "audit:read"
 	ScopeAdminUsers      = "admin:users"
-	ScopeNamespaceRead   = "namespace:read"
-	ScopeNamespaceWrite  = "namespace:write"
+	ScopeRegionRead      = "region:read"
+	ScopeRegionWrite     = "region:write"
 )
 
 // AllScopes is the complete list of valid scopes.
@@ -248,11 +248,11 @@ var AllScopes = []string{
 	ScopeMemberRead, ScopeMemberWrite,
 	ScopeAuditRead,
 	ScopeAdminUsers,
-	ScopeNamespaceRead, ScopeNamespaceWrite,
+	ScopeRegionRead, ScopeRegionWrite,
 }
 
-// RoleToScopes maps an OIDC user's namespace role to the equivalent scope set.
-func RoleToScopes(role NamespaceRole, isAdmin bool) []string {
+// RoleToScopes maps an OIDC user's region role to the equivalent scope set.
+func RoleToScopes(role RegionRole, isAdmin bool) []string {
 	if isAdmin {
 		return AllScopes
 	}
@@ -264,7 +264,7 @@ func RoleToScopes(role NamespaceRole, isAdmin bool) []string {
 			ScopeCredentialRead, ScopeCredentialWrite,
 			ScopeMemberRead, ScopeMemberWrite,
 			ScopeAuditRead,
-			ScopeNamespaceRead, ScopeNamespaceWrite,
+			ScopeRegionRead, ScopeRegionWrite,
 		}
 	case RoleEditor:
 		return []string{
@@ -273,7 +273,7 @@ func RoleToScopes(role NamespaceRole, isAdmin bool) []string {
 			ScopeCredentialRead, ScopeCredentialWrite,
 			ScopeMemberRead, ScopeMemberWrite,
 			ScopeAuditRead,
-			ScopeNamespaceRead,
+			ScopeRegionRead,
 		}
 	case RoleViewer:
 		return []string{
@@ -282,7 +282,7 @@ func RoleToScopes(role NamespaceRole, isAdmin bool) []string {
 			ScopeCredentialRead,
 			ScopeMemberRead,
 			ScopeAuditRead,
-			ScopeNamespaceRead,
+			ScopeRegionRead,
 		}
 	default:
 		return nil
@@ -300,10 +300,10 @@ func ValidScope(s string) bool {
 }
 
 // APICredential represents a managed AK/SK pair for HMAC-SHA256 authentication.
-// Credentials are namespace-scoped; AK is globally unique for auth lookup.
+// Credentials are region-scoped; AK is globally unique for auth lookup.
 type APICredential struct {
 	ID          int64     `json:"id"`
-	Namespace   string    `json:"namespace,omitempty"`
+	Region      string    `json:"region,omitempty"`
 	AccessKey   string    `json:"access_key"`
 	SecretKey   string    `json:"secret_key,omitempty"` // omitted on list for safety; only returned on create
 	Description string    `json:"description"`
@@ -327,9 +327,9 @@ func (c *APICredential) HasScope(scope string) bool {
 // JWTSigningKey represents a persistent HMAC-SHA256 signing key for builtin auth.
 // Keys have a lifecycle: active → retired → expired (deleted by reaper).
 type JWTSigningKey struct {
-	KID       string     `json:"kid"`        // unique key identifier, included in JWT header
-	Secret    []byte     `json:"-"`          // raw 256-bit HMAC key (never serialized to JSON)
-	Status    string     `json:"status"`     // "active" or "retired"
+	KID       string     `json:"kid"`    // unique key identifier, included in JWT header
+	Secret    []byte     `json:"-"`      // raw 256-bit HMAC key (never serialized to JSON)
+	Status    string     `json:"status"` // "active" or "retired"
 	CreatedAt time.Time  `json:"created_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // nil for active key; set when retired
 }
@@ -346,29 +346,29 @@ type User struct {
 	LastSeen           time.Time `json:"last_seen"`
 }
 
-// GroupBinding maps an OIDC group to a role within a namespace.
+// GroupBinding maps an OIDC group to a role within a region.
 type GroupBinding struct {
-	ID        int64         `json:"id"`
-	Namespace string        `json:"namespace"`
-	Group     string        `json:"group"`
-	Role      NamespaceRole `json:"role"`
+	ID     int64      `json:"id"`
+	Region string     `json:"region"`
+	Group  string     `json:"group"`
+	Role   RegionRole `json:"role"`
 }
 
-// NamespaceRole defines the permission level of a user within a namespace.
-type NamespaceRole string
+// RegionRole defines the permission level of a user within a region.
+type RegionRole string
 
 const (
-	RoleOwner  NamespaceRole = "owner"
-	RoleEditor NamespaceRole = "editor"
-	RoleViewer NamespaceRole = "viewer"
+	RoleOwner  RegionRole = "owner"
+	RoleEditor RegionRole = "editor"
+	RoleViewer RegionRole = "viewer"
 )
 
-// NamespaceMember represents a user's role within a namespace.
-type NamespaceMember struct {
-	Namespace string        `json:"namespace"`
-	UserSub   string        `json:"user_sub"`
-	Role      NamespaceRole `json:"role"`
-	Username  string        `json:"username,omitempty"` // joined from users table
-	Email     string        `json:"email,omitempty"`
-	Name      string        `json:"name,omitempty"`
+// RegionMember represents a user's role within a region.
+type RegionMember struct {
+	Region   string     `json:"region"`
+	UserSub  string     `json:"user_sub"`
+	Role     RegionRole `json:"role"`
+	Username string     `json:"username,omitempty"` // joined from users table
+	Email    string     `json:"email,omitempty"`
+	Name     string     `json:"name,omitempty"`
 }

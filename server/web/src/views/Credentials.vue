@@ -7,7 +7,7 @@
         <h2>AK/SK Pairs</h2>
         <button class="btn btn-sm btn-primary" @click="showCreateDialog = true">+ Create Credential</button>
       </div>
-      <p class="section-desc">Manage AK/SK pairs for controller HMAC-SHA256 authentication. Authorization is namespace-scoped (controllers select namespace via X-Hermes-Namespace header).</p>
+      <p class="section-desc">Manage AK/SK pairs for controller HMAC-SHA256 authentication. Authorization is region-scoped (controllers select region via X-Hermes-Region header).</p>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>
       <div v-if="loading" class="loading">Loading credentials...</div>

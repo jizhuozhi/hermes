@@ -21,7 +21,7 @@ func NewStatusHandler(s store.Store, logger *zap.SugaredLogger) *StatusHandler {
 // ReportInstances accepts a PUT/POST from the controller with the current
 // list of gateway instances observed from etcd /hermes/instances.
 func (h *StatusHandler) ReportInstances(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	body, err := ReadBody(r)
 	if err != nil {
@@ -37,21 +37,21 @@ func (h *StatusHandler) ReportInstances(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.store.UpsertGatewayInstances(r.Context(), ns, report.Instances); err != nil {
+	if err := h.store.UpsertGatewayInstances(r.Context(), region, report.Instances); err != nil {
 		h.logger.Errorf("upsert gateway instances: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, "store: "+err.Error())
 		return
 	}
 
-	h.logger.Infof("instances reported: ns=%s count=%d", ns, len(report.Instances))
+	h.logger.Infof("instances reported: ns=%s count=%d", region, len(report.Instances))
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // AggregateStatus returns the current gateway instance list, controller status and metadata.
 func (h *StatusHandler) AggregateStatus(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	instances, err := h.store.ListGatewayInstances(r.Context(), ns)
+	instances, err := h.store.ListGatewayInstances(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("list instances: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -61,7 +61,7 @@ func (h *StatusHandler) AggregateStatus(w http.ResponseWriter, r *http.Request) 
 		instances = []store.GatewayInstanceStatus{}
 	}
 
-	ctrl, err := h.store.GetControllerStatus(r.Context(), ns)
+	ctrl, err := h.store.GetControllerStatus(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("get controller: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -83,9 +83,9 @@ func (h *StatusHandler) AggregateStatus(w http.ResponseWriter, r *http.Request) 
 
 // ListInstances returns the raw instance list.
 func (h *StatusHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	instances, err := h.store.ListGatewayInstances(r.Context(), ns)
+	instances, err := h.store.ListGatewayInstances(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("list instances: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -100,7 +100,7 @@ func (h *StatusHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
 
 // ReportController accepts a PUT from the controller with its own status.
 func (h *StatusHandler) ReportController(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	body, err := ReadBody(r)
 	if err != nil {
@@ -114,21 +114,21 @@ func (h *StatusHandler) ReportController(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.store.UpsertControllerStatus(r.Context(), ns, &report); err != nil {
+	if err := h.store.UpsertControllerStatus(r.Context(), region, &report); err != nil {
 		h.logger.Errorf("upsert controller status: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, "store: "+err.Error())
 		return
 	}
 
-	h.logger.Infof("controller status reported: ns=%s id=%s status=%s revision=%d", ns, report.ID, report.Status, report.ConfigRevision)
+	h.logger.Infof("controller status reported: ns=%s id=%s status=%s revision=%d", region, report.ID, report.Status, report.ConfigRevision)
 	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // GetController returns the current controller status.
 func (h *StatusHandler) GetController(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	ctrl, err := h.store.GetControllerStatus(r.Context(), ns)
+	ctrl, err := h.store.GetControllerStatus(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("get controller: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())

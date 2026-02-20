@@ -77,22 +77,26 @@ Hermes is a high-performance API gateway platform with a dynamic control plane. 
 ### Server (Go + Vue 3)
 
 - **Web UI** — Built-in Vue 3 SPA for managing domains, clusters, credentials, members, and monitoring
-- **Multi-namespace** — All resources are namespace-scoped with namespace switching in the UI
+- **Multi-region** — All resources are region-scoped; each controller operates in a single region (physical isolation unit: DC, AZ, EKS cluster, compliance zone)
 - **RBAC** — Three roles (Owner, Editor, Viewer) with 13 fine-grained permission scopes
 - **OIDC authentication** — Standard Authorization Code Flow; works with any OIDC provider (Keycloak, Okta, etc.)
 - **HMAC-SHA256 authentication** — For service-to-service communication (Controller → Server)
-- **OIDC Group Binding** — Map IdP groups to namespace roles automatically
+- **OIDC Group Binding** — Map IdP groups to region roles automatically
+- **Optimistic Concurrency Control (OCC)** — resource_version-based conflict detection; prevents lost updates when multiple users edit the same resource
 - **Config versioning & rollback** — Full history with one-click rollback to any previous version
 - **Audit log** — Records every config change with operator, timestamp, and action
 - **Watch API** — Short-poll endpoint for controllers to receive incremental config changes
 - **Status dashboard** — Real-time view of gateway instances and controller health
-- **Grafana integration** — Embed Grafana dashboards per namespace
+- **Grafana integration** — Embed Grafana dashboards per region
 - **Bootstrap mode** — Unauthenticated access when no credentials exist (first-time setup)
+- **Builtin authentication** — Optional standalone JWT-based auth (no external IdP required)
 
 ### Controller (Go Config Sync)
 
+- **Region-scoped sync** — Each controller pulls config for a specific region via `X-Hermes-Region` header
 - **Incremental sync** — Short-polls the server every few seconds for config changes, applies them to etcd
 - **Full reconciliation** — Periodic full diff (server vs etcd) to self-heal any drift
+- **Leader election** — Optional HA mode with etcd-based leader election for multi-controller deployments
 - **Heartbeat** — Reports controller health and config revision to the server
 - **Instance reporting** — Watches etcd for gateway instance registrations and reports them upstream
 - **HMAC transport** — Automatically signs all requests to the server
@@ -196,6 +200,7 @@ controlplane:
   url: "http://127.0.0.1:9080"
   poll_interval: 5
   reconcile_interval: 60
+  region: "default"  # region to pull config from (X-Hermes-Region header)
 
 etcd:
   endpoints:

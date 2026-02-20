@@ -78,7 +78,7 @@ func main() {
 	}
 
 	// Middleware factories
-	nsMW := handler.NamespaceMiddleware
+	nsMW := handler.RegionMiddleware
 	authMW := handler.Authenticate(pgStore, oidcVerifier, sugar)
 
 	// Scope shortcuts.
@@ -93,8 +93,8 @@ func main() {
 	memberWrite := handler.RequireScope(store.ScopeMemberWrite)
 	auditRead := handler.RequireScope(store.ScopeAuditRead)
 	adminUsers := handler.RequireScope(store.ScopeAdminUsers)
-	nsRead := handler.RequireScope(store.ScopeNamespaceRead)
-	nsWrite := handler.RequireScope(store.ScopeNamespaceWrite)
+	nsRead := handler.RequireScope(store.ScopeRegionRead)
+	nsWrite := handler.RequireScope(store.ScopeRegionWrite)
 
 	mux := http.NewServeMux()
 
@@ -208,16 +208,16 @@ func main() {
 	mux.Handle("PUT /api/v1/users/{sub}/force-password-change", handler.Wrap(http.HandlerFunc(memberHandler.ForcePasswordChange), authMW, adminUsers))
 	mux.Handle("PUT /api/v1/users/{sub}/reset-password", handler.Wrap(http.HandlerFunc(memberHandler.ResetUserPassword), authMW, adminUsers))
 
-	// -- Namespaces --
-	mux.Handle("GET /api/v1/namespaces", handler.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nsList, err := pgStore.ListNamespaces(r.Context())
+	// -- Regions --
+	mux.Handle("GET /api/v1/regions", handler.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		regionList, err := pgStore.ListRegions(r.Context())
 		if err != nil {
 			handler.ErrJSON(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		handler.JSON(w, http.StatusOK, map[string]any{"namespaces": nsList})
+		handler.JSON(w, http.StatusOK, map[string]any{"regions": regionList})
 	}), authMW, nsRead))
-	mux.Handle("POST /api/v1/namespaces", handler.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("POST /api/v1/regions", handler.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Name string `json:"name"`
 		}
@@ -227,24 +227,24 @@ func main() {
 		}
 		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" {
-			handler.ErrJSON(w, http.StatusBadRequest, "namespace name is required")
+			handler.ErrJSON(w, http.StatusBadRequest, "region name is required")
 			return
 		}
-		if errMsg := store.ValidateNamespaceName(req.Name); errMsg != "" {
+		if errMsg := store.ValidateRegionName(req.Name); errMsg != "" {
 			handler.ErrJSON(w, http.StatusBadRequest, errMsg)
 			return
 		}
-		if err := pgStore.CreateNamespace(r.Context(), req.Name); err != nil {
+		if err := pgStore.CreateRegion(r.Context(), req.Name); err != nil {
 			if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
-				handler.ErrJSON(w, http.StatusConflict, "namespace already exists")
+				handler.ErrJSON(w, http.StatusConflict, "region already exists")
 				return
 			}
 			handler.ErrJSON(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Auto-add creator as owner of the new namespace (OIDC users only).
+		// Auto-add creator as owner of the new region (OIDC users only).
 		if claims := handler.OIDCClaimsFromContext(r.Context()); claims != nil {
-			_ = pgStore.SetNamespaceMember(r.Context(), req.Name, claims.Sub, store.RoleOwner)
+			_ = pgStore.SetRegionMember(r.Context(), req.Name, claims.Sub, store.RoleOwner)
 		}
 		handler.JSON(w, http.StatusCreated, map[string]any{"name": req.Name})
 	}), authMW, nsWrite))
@@ -307,14 +307,14 @@ func main() {
 					sugar.Warnf("stale instance reaper: %v", err)
 				} else {
 					for _, e := range stale {
-						sugar.Warnf("gateway instance offline: ns=%s id=%s", e.Namespace, e.ID)
+						sugar.Warnf("gateway instance offline: region=%s id=%s", e.Region, e.ID)
 					}
 				}
 				if stale, err := pgStore.MarkStaleControllers(ctx, controllerStaleThreshold); err != nil {
 					sugar.Warnf("stale controller reaper: %v", err)
 				} else {
 					for _, e := range stale {
-						sugar.Warnf("controller offline: ns=%s id=%s", e.Namespace, e.ID)
+						sugar.Warnf("controller offline: region=%s id=%s", e.Region, e.ID)
 					}
 				}
 				cancel()

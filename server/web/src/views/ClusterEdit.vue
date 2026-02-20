@@ -139,7 +139,7 @@
           <h3>Metadata Match <span class="hint">(all keys must match — AND; values per key are alternatives — OR)</span></h3>
           <div v-for="(rule, i) in metadataRules" :key="i" class="meta-rule">
             <div class="meta-key">
-              <input v-model="rule.key" placeholder="key (e.g. namespace)" @input="syncMetadata" />
+              <input v-model="rule.key" placeholder="key (e.g. region)" @input="syncMetadata" />
             </div>
             <div class="meta-values">
               <span v-for="(val, j) in rule.values" :key="j" class="meta-tag">

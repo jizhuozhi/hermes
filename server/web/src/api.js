@@ -2,16 +2,16 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api/v1' })
 
-// Namespace
-let currentNamespace = localStorage.getItem('hermes_namespace') || 'default'
+// Region
+let currentRegion = localStorage.getItem('hermes_region') || 'default'
 
-export function setNamespace(ns) {
-  currentNamespace = ns
-  localStorage.setItem('hermes_namespace', ns)
+export function setRegion(ns) {
+  currentRegion = ns
+  localStorage.setItem('hermes_region', ns)
 }
 
-export function getNamespace() {
-  return currentNamespace
+export function getRegion() {
+  return currentRegion
 }
 
 // Auth
@@ -163,8 +163,8 @@ async function _doRefresh() {
 
 // Interceptors
 api.interceptors.request.use(async (config) => {
-  if (currentNamespace) {
-    config.headers['X-Hermes-Namespace'] = currentNamespace
+  if (currentRegion) {
+    config.headers['X-Hermes-Region'] = currentRegion
   }
   const token = getToken()
   if (token) {
@@ -255,16 +255,16 @@ export default {
   // Scopes
   listScopes: () => api.get('/scopes'),
 
-  // Namespaces
-  listNamespaces: () => api.get('/namespaces'),
-  createNamespace: (name) => api.post('/namespaces', { name }),
+  // Regions
+  listRegions: () => api.get('/regions'),
+  createRegion: (name) => api.post('/regions', { name }),
 
-  // Namespace Members
+  // Region Members
   listMembers: () => api.get('/members'),
   addMember: (userSub, role) => api.post('/members', { user_sub: userSub, role }),
   removeMember: (sub) => api.delete(`/members/${sub}`),
 
-  // Group Bindings (OIDC group → namespace role)
+  // Group Bindings (OIDC group → region role)
   listGroupBindings: () => api.get('/group-bindings'),
   setGroupBinding: (group, role) => api.post('/group-bindings', { group, role }),
   removeGroupBinding: (group) => api.delete(`/group-bindings/${encodeURIComponent(group)}`),

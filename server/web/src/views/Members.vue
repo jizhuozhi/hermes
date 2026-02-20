@@ -2,7 +2,7 @@
   <div class="members-page">
     <div class="page-header">
       <h1>Members</h1>
-      <p class="page-desc">Manage who can access this namespace and their roles.</p>
+      <p class="page-desc">Manage who can access this region and their roles.</p>
     </div>
 
     <!-- Current user info -->
@@ -66,14 +66,14 @@
           </tr>
         </tbody>
       </table>
-      <div v-else class="empty-state">No members in this namespace yet.</div>
+      <div v-else class="empty-state">No members in this region yet.</div>
     </div>
 
     <!-- Group Bindings section -->
     <div class="group-bindings-section">
       <h2>Group Bindings</h2>
       <p class="page-desc">
-        Map OIDC groups to namespace roles. Users who belong to a bound group automatically inherit the configured role.
+        Map OIDC groups to region roles. Users who belong to a bound group automatically inherit the configured role.
       </p>
 
       <!-- Add group binding (only for admin/owner) -->
@@ -128,7 +128,7 @@
           </tr>
         </tbody>
       </table>
-      <div v-else class="empty-state">No group bindings configured for this namespace.</div>
+      <div v-else class="empty-state">No group bindings configured for this region.</div>
     </div>
 
     <!-- Admin section: All Users -->
@@ -344,7 +344,7 @@ export default {
       }
     },
     async removeMember(m) {
-      if (!confirm(`Remove ${m.username || m.user_sub} from this namespace?`)) return
+      if (!confirm(`Remove ${m.username || m.user_sub} from this region?`)) return
       try {
         await api.removeMember(m.user_sub)
         await this.loadData()

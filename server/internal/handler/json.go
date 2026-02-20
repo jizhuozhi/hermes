@@ -78,9 +78,9 @@ func Operator(r *http.Request) string {
 	}
 	var claims struct {
 		PreferredUsername string `json:"preferred_username"`
-		Email            string `json:"email"`
-		Name             string `json:"name"`
-		Sub              string `json:"sub"`
+		Email             string `json:"email"`
+		Name              string `json:"name"`
+		Sub               string `json:"sub"`
 	}
 	if json.Unmarshal(payload, &claims) != nil {
 		return ""

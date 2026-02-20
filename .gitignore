@@ -1,6 +1,8 @@
 # Compiled binaries
 server/hermes-server
+server/server
 controller/hermes-controller
+controller/controller
 
 # Go
 *.exe

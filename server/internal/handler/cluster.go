@@ -22,8 +22,8 @@ func NewClusterHandler(s store.Store, logger *zap.SugaredLogger) *ClusterHandler
 }
 
 func (h *ClusterHandler) ListClusters(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
-	clusters, err := h.store.ListClusters(r.Context(), ns)
+	region := RegionFromContext(r.Context())
+	clusters, err := h.store.ListClusters(r.Context(), region)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -32,9 +32,9 @@ func (h *ClusterHandler) ListClusters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClusterHandler) GetCluster(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
-	cluster, rv, err := h.store.GetCluster(r.Context(), ns, name)
+	cluster, rv, err := h.store.GetCluster(r.Context(), region, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -47,7 +47,7 @@ func (h *ClusterHandler) GetCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	var cluster model.ClusterConfig
 	if err := DecodeJSON(r, &cluster); err != nil {
 		ErrJSON(w, http.StatusBadRequest, fmt.Sprintf("invalid json: %v", err))
@@ -64,7 +64,7 @@ func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ver, err := h.store.PutCluster(r.Context(), ns, &cluster, "create", Operator(r), 0)
+	ver, err := h.store.PutCluster(r.Context(), region, &cluster, "create", Operator(r), 0)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			ErrJSON(w, http.StatusConflict, fmt.Sprintf("cluster %q already exists", cluster.Name))
@@ -74,12 +74,12 @@ func (h *ClusterHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Infof("cluster created: %s (ns=%s), version=%d", cluster.Name, ns, ver)
+	h.logger.Infof("cluster created: %s (ns=%s), version=%d", cluster.Name, region, ver)
 	JSON(w, http.StatusCreated, map[string]any{"version": ver, "cluster": cluster, "resource_version": int64(1)})
 }
 
 func (h *ClusterHandler) UpdateCluster(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 
 	var body struct {
@@ -103,7 +103,7 @@ func (h *ClusterHandler) UpdateCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ver, err := h.store.PutCluster(r.Context(), ns, &body.ClusterConfig, "update", Operator(r), body.ResourceVersion)
+	ver, err := h.store.PutCluster(r.Context(), region, &body.ClusterConfig, "update", Operator(r), body.ResourceVersion)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			ErrJSON(w, http.StatusConflict, "conflict: the cluster has been modified by another user, please refresh and try again")
@@ -113,29 +113,29 @@ func (h *ClusterHandler) UpdateCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Infof("cluster updated: %s (ns=%s), version=%d", name, ns, ver)
+	h.logger.Infof("cluster updated: %s (ns=%s), version=%d", name, region, ver)
 	JSON(w, http.StatusOK, map[string]any{"version": ver, "cluster": body.ClusterConfig, "resource_version": body.ResourceVersion + 1})
 }
 
 func (h *ClusterHandler) DeleteCluster(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 
-	ver, err := h.store.DeleteCluster(r.Context(), ns, name, Operator(r))
+	ver, err := h.store.DeleteCluster(r.Context(), region, name, Operator(r))
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("cluster deleted: %s (ns=%s), version=%d", name, ns, ver)
+	h.logger.Infof("cluster deleted: %s (ns=%s), version=%d", name, region, ver)
 	JSON(w, http.StatusOK, map[string]any{"version": ver})
 }
 
 // Per-cluster history & rollback
 func (h *ClusterHandler) ListClusterHistory(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
-	history, err := h.store.GetClusterHistory(r.Context(), ns, name)
+	history, err := h.store.GetClusterHistory(r.Context(), region, name)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -144,7 +144,7 @@ func (h *ClusterHandler) ListClusterHistory(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *ClusterHandler) GetClusterVersion(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 	versionStr := r.PathValue("version")
 	version, err := strconv.ParseInt(versionStr, 10, 64)
@@ -153,7 +153,7 @@ func (h *ClusterHandler) GetClusterVersion(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	entry, err := h.store.GetClusterVersion(r.Context(), ns, name, version)
+	entry, err := h.store.GetClusterVersion(r.Context(), region, name, version)
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -167,7 +167,7 @@ func (h *ClusterHandler) GetClusterVersion(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ClusterHandler) RollbackCluster(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 	name := r.PathValue("name")
 	versionStr := r.PathValue("version")
 	version, err := strconv.ParseInt(versionStr, 10, 64)
@@ -176,13 +176,13 @@ func (h *ClusterHandler) RollbackCluster(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	newVersion, err := h.store.RollbackCluster(r.Context(), ns, name, version, Operator(r))
+	newVersion, err := h.store.RollbackCluster(r.Context(), region, name, version, Operator(r))
 	if err != nil {
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("cluster %s (ns=%s) rollback to version %d, new version=%d", name, ns, version, newVersion)
+	h.logger.Infof("cluster %s (ns=%s) rollback to version %d, new version=%d", name, region, version, newVersion)
 	JSON(w, http.StatusOK, map[string]any{
 		"name":           name,
 		"rolled_back_to": version,

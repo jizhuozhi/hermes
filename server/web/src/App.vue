@@ -12,15 +12,15 @@
           <span>Hermes Control Plane</span>
         </div>
         <div class="ns-selector">
-          <label class="ns-label">Namespace</label>
+          <label class="ns-label">Region</label>
           <div class="ns-row">
             <select v-model="currentNs" @change="onNsChange" class="ns-select">
-              <option v-for="ns in namespaces" :key="ns" :value="ns">{{ ns }}</option>
+              <option v-for="ns in regions" :key="ns" :value="ns">{{ ns }}</option>
             </select>
-            <button class="ns-add-btn" @click="showCreateNs = true" title="Create namespace">+</button>
+            <button class="ns-add-btn" @click="showCreateNs = true" title="Create region">+</button>
           </div>
           <div v-if="showCreateNs" class="ns-create">
-            <input v-model="newNsName" class="ns-input" placeholder="namespace name" @keyup.enter="createNs" />
+            <input v-model="newNsName" class="ns-input" placeholder="region name" @keyup.enter="createNs" />
             <div class="ns-create-actions">
               <button class="ns-btn ns-btn-primary" @click="createNs" :disabled="!newNsName.trim()">Create</button>
               <button class="ns-btn ns-btn-cancel" @click="showCreateNs = false; newNsName = ''">Cancel</button>
@@ -93,13 +93,13 @@
 </template>
 
 <script>
-import api, { getNamespace, setNamespace, getUser, clearAuth } from './api.js'
+import api, { getRegion, setRegion, getUser, clearAuth } from './api.js'
 
 export default {
   data() {
     return {
-      namespaces: ['default'],
-      currentNs: getNamespace(),
+      regions: ['default'],
+      currentNs: getRegion(),
       nsKey: 0,
       showCreateNs: false,
       newNsName: '',
@@ -124,13 +124,13 @@ export default {
   },
   async created() {
     try {
-      const res = await api.listNamespaces()
-      const nsList = res.data.namespaces || []
-      if (nsList.length) {
-        this.namespaces = nsList
+      const res = await api.listRegions()
+      const regionList = res.data.regions || []
+      if (regionList.length) {
+        this.regions = regionList
       }
-      if (!this.namespaces.includes(this.currentNs)) {
-        this.namespaces.push(this.currentNs)
+      if (!this.regions.includes(this.currentNs)) {
+        this.regions.push(this.currentNs)
       }
     } catch (e) {
       // fallback: keep 'default'
@@ -138,7 +138,7 @@ export default {
   },
   methods: {
     onNsChange() {
-      setNamespace(this.currentNs)
+      setRegion(this.currentNs)
       this.nsKey++
     },
     async createNs() {
@@ -146,15 +146,15 @@ export default {
       if (!name) return
       this.nsError = ''
       try {
-        await api.createNamespace(name)
-        this.namespaces.push(name)
-        setNamespace(name)
+        await api.createRegion(name)
+        this.regions.push(name)
+        setRegion(name)
         this.currentNs = name
         this.nsKey++
         this.showCreateNs = false
         this.newNsName = ''
       } catch (e) {
-        this.nsError = e.response?.data?.error || 'Failed to create namespace'
+        this.nsError = e.response?.data?.error || 'Failed to create region'
       }
     },
     logout() {

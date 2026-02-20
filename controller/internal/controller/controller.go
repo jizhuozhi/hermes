@@ -72,20 +72,20 @@ func New(cfg *config.Config, logger *zap.SugaredLogger) (*Controller, error) {
 
 	hostname, _ := os.Hostname()
 
-	ns := cfg.ControlPlane.Namespace // already defaulted in config.Load
+	region := cfg.ControlPlane.Region // already defaulted in config.Load
 
 	var rt http.RoundTripper = http.DefaultTransport
 	if cfg.Auth.AccessKey != "" && cfg.Auth.SecretKey != "" {
 		rt = &transport.HMACSigning{
-			AK:        cfg.Auth.AccessKey,
-			SK:        cfg.Auth.SecretKey,
-			Namespace: ns,
-			Base:      http.DefaultTransport,
+			AK:     cfg.Auth.AccessKey,
+			SK:     cfg.Auth.SecretKey,
+			Region: region,
+			Base:   http.DefaultTransport,
 		}
-		logger.Infof("HMAC-SHA256 authentication enabled (ak=%s, namespace=%s)", cfg.Auth.AccessKey, ns)
-	} else if ns != "default" {
-		rt = &transport.NamespaceOnly{Namespace: ns, Base: http.DefaultTransport}
-		logger.Infof("namespace=%s (no auth)", ns)
+		logger.Infof("HMAC-SHA256 authentication enabled (ak=%s, region=%s)", cfg.Auth.AccessKey, region)
+	} else if region != "default" {
+		rt = &transport.RegionOnly{Region: region, Base: http.DefaultTransport}
+		logger.Infof("region=%s (no auth)", region)
 	}
 
 	ctrl := &Controller{

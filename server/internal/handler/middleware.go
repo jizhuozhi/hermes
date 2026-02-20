@@ -25,11 +25,11 @@ import (
 // across packages — no risk of collision with int-based keys.
 
 type identityKeyType struct{}
-type namespaceKeyType struct{}
+type regionKeyType struct{}
 
 var (
-	identityKey  = identityKeyType{}
-	namespaceKey = namespaceKeyType{}
+	identityKey = identityKeyType{}
+	regionKey   = regionKeyType{}
 )
 
 // Identity: unified caller identity (OIDC user or HMAC credential)
@@ -39,8 +39,8 @@ var (
 type Identity struct {
 	// Subject identifies the caller: OIDC sub or credential access_key.
 	Subject string
-	// Namespace the caller is operating in.
-	Namespace string
+	// Region the caller is operating in.
+	Region string
 	// Scopes the caller is authorized for.
 	Scopes []string
 	// Source distinguishes auth method: "oidc" or "hmac".
@@ -67,28 +67,28 @@ func IdentityFromContext(ctx context.Context) *Identity {
 	return id
 }
 
-// NamespaceFromContext returns the namespace from the request context.
-func NamespaceFromContext(ctx context.Context) string {
-	ns, _ := ctx.Value(namespaceKey).(string)
-	if ns == "" {
-		return store.DefaultNamespace
+// RegionFromContext returns the region from the request context.
+func RegionFromContext(ctx context.Context) string {
+	region, _ := ctx.Value(regionKey).(string)
+	if region == "" {
+		return store.DefaultRegion
 	}
-	return ns
+	return region
 }
 
-// Namespace Middleware
-// NamespaceMiddleware extracts the namespace from the X-Hermes-Namespace header
-// (or ?namespace= query param for web UI) and injects it into context.
-func NamespaceMiddleware(next http.Handler) http.Handler {
+// Region Middleware
+// RegionMiddleware extracts the region from the X-Hermes-Region header
+// (or ?region= query param for web UI) and injects it into context.
+func RegionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ns := r.Header.Get("X-Hermes-Namespace")
-		if ns == "" {
-			ns = r.URL.Query().Get("namespace")
+		region := r.Header.Get("X-Hermes-Region")
+		if region == "" {
+			region = r.URL.Query().Get("region")
 		}
-		if ns == "" {
-			ns = store.DefaultNamespace
+		if region == "" {
+			region = store.DefaultRegion
 		}
-		ctx := context.WithValue(r.Context(), namespaceKey, ns)
+		ctx := context.WithValue(r.Context(), regionKey, region)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -108,12 +108,12 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
-			ns := NamespaceFromContext(r.Context())
+			region := RegionFromContext(r.Context())
 
 			switch {
 			case strings.HasPrefix(authHeader, "Bearer "):
 				// OIDC Bearer token
-				identity, err := authenticateOIDC(r.Context(), s, oidcVerifier, authHeader, ns)
+				identity, err := authenticateOIDC(r.Context(), s, oidcVerifier, authHeader, region)
 				if err != nil {
 					logger.Debugf("OIDC auth failed: %v", err)
 					ErrJSON(w, http.StatusUnauthorized, err.Error())
@@ -124,7 +124,7 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 
 			case strings.HasPrefix(authHeader, "HMAC-SHA256 "):
 				// HMAC credential
-				identity, err := authenticateHMAC(r, s, logger, ns)
+				identity, err := authenticateHMAC(r, s, logger, region)
 				if err != nil {
 					ErrJSON(w, http.StatusUnauthorized, err.Error())
 					return
@@ -135,7 +135,7 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 			case authHeader == "":
 				// No auth header. Allow through only for HMAC bootstrap
 				// (no credentials exist in DB yet).
-				creds, err := s.ListAPICredentials(r.Context(), ns)
+				creds, err := s.ListAPICredentials(r.Context(), region)
 				if err != nil {
 					logger.Errorf("auth: list credentials: %v", err)
 					ErrJSON(w, http.StatusInternalServerError, "auth check failed")
@@ -159,7 +159,7 @@ func Authenticate(s store.Store, oidcVerifier OIDCVerifyFunc, logger *zap.Sugare
 // This is injected by the OIDCAuth setup so the middleware doesn't depend on config.
 type OIDCVerifyFunc func(tokenStr string) (*OIDCClaims, error)
 
-func authenticateOIDC(ctx context.Context, s store.Store, verify OIDCVerifyFunc, authHeader, ns string) (*Identity, error) {
+func authenticateOIDC(ctx context.Context, s store.Store, verify OIDCVerifyFunc, authHeader, region string) (*Identity, error) {
 	if verify == nil {
 		return nil, fmt.Errorf("OIDC authentication not configured")
 	}
@@ -177,23 +177,23 @@ func authenticateOIDC(ctx context.Context, s store.Store, verify OIDCVerifyFunc,
 		isAdmin = user.IsAdmin
 	}
 
-	var role store.NamespaceRole
+	var role store.RegionRole
 	if !isAdmin {
-		role = store.NamespaceRole(resolveEffectiveRole(ctx, s, ns, claims))
+		role = store.RegionRole(resolveEffectiveRole(ctx, s, region, claims))
 	}
 
 	scopes := store.RoleToScopes(role, isAdmin)
 
 	return &Identity{
 		Subject:    claims.Sub,
-		Namespace:  ns,
+		Region:     region,
 		Scopes:     scopes,
 		Source:     "oidc",
 		OIDCClaims: claims,
 	}, nil
 }
 
-func authenticateHMAC(r *http.Request, s store.Store, logger *zap.SugaredLogger, ns string) (*Identity, error) {
+func authenticateHMAC(r *http.Request, s store.Store, logger *zap.SugaredLogger, region string) (*Identity, error) {
 	authHeader := r.Header.Get("Authorization")
 
 	ak, sig, err := parseHMACAuthHeader(authHeader)
@@ -252,27 +252,27 @@ func authenticateHMAC(r *http.Request, s store.Store, logger *zap.SugaredLogger,
 
 	return &Identity{
 		Subject:    "credential:" + cred.AccessKey,
-		Namespace:  cred.Namespace,
+		Region:     cred.Region,
 		Scopes:     cred.Scopes,
 		Source:     "hmac",
 		Credential: cred,
 	}, nil
 }
 
-// resolveEffectiveRole returns the highest role for the user in the given namespace,
+// resolveEffectiveRole returns the highest role for the user in the given region,
 // considering both direct membership and group bindings.
-func resolveEffectiveRole(ctx context.Context, s store.Store, ns string, claims *OIDCClaims) string {
+func resolveEffectiveRole(ctx context.Context, s store.Store, region string, claims *OIDCClaims) string {
 	var role string
 
-	member, _ := s.GetNamespaceMember(ctx, ns, claims.Sub)
+	member, _ := s.GetRegionMember(ctx, region, claims.Sub)
 	if member != nil {
 		role = string(member.Role)
 	}
 
 	if len(claims.Groups) > 0 {
-		groupRole, err := s.GetEffectiveRoleByGroups(ctx, ns, claims.Groups)
+		groupRole, err := s.GetEffectiveRoleByGroups(ctx, region, claims.Groups)
 		if err == nil && groupRole != nil {
-			if role == "" || store.RolePriority(*groupRole) > store.RolePriority(store.NamespaceRole(role)) {
+			if role == "" || store.RolePriority(*groupRole) > store.RolePriority(store.RegionRole(role)) {
 				role = string(*groupRole)
 			}
 		}
@@ -283,7 +283,7 @@ func resolveEffectiveRole(ctx context.Context, s store.Store, ns string, claims 
 
 // Scope-based Authorization
 // RequireScope returns a middleware that checks the caller has the given scope.
-// Must be applied AFTER Authenticate + NamespaceMiddleware.
+// Must be applied AFTER Authenticate + RegionMiddleware.
 func RequireScope(scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +308,7 @@ func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-Hermes-Timestamp, X-Hermes-Body-SHA256, X-Hermes-Namespace")
+		w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, X-Hermes-Timestamp, X-Hermes-Body-SHA256, X-Hermes-Region")
 		w.Header().Set("Access-Control-Max-Age", "43200")
 
 		if r.Method == http.MethodOptions {

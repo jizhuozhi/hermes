@@ -20,10 +20,10 @@ func TestHMACSigning_SetsHeaders(t *testing.T) {
 	defer server.Close()
 
 	rt := &HMACSigning{
-		AK:        "test-ak",
-		SK:        "test-sk",
-		Namespace: "test-ns",
-		Base:      http.DefaultTransport,
+		AK:     "test-ak",
+		SK:     "test-sk",
+		Region: "test-ns",
+		Base:   http.DefaultTransport,
 	}
 	client := &http.Client{Transport: rt}
 
@@ -36,7 +36,7 @@ func TestHMACSigning_SetsHeaders(t *testing.T) {
 	assert.Contains(t, capturedHeaders.Get("Authorization"), "Signature=")
 	assert.NotEmpty(t, capturedHeaders.Get("X-Hermes-Timestamp"))
 	assert.NotEmpty(t, capturedHeaders.Get("X-Hermes-Body-SHA256"))
-	assert.Equal(t, "test-ns", capturedHeaders.Get("X-Hermes-Namespace"))
+	assert.Equal(t, "test-ns", capturedHeaders.Get("X-Hermes-Region"))
 }
 
 func TestHMACSigning_WithBody(t *testing.T) {
@@ -92,15 +92,15 @@ func TestHMACSigning_DifferentSignaturesForDifferentPaths(t *testing.T) {
 	assert.NotEqual(t, sigs[0], sigs[1])
 }
 
-func TestNamespaceOnly_SetsHeader(t *testing.T) {
+func TestRegionOnly_SetsHeader(t *testing.T) {
 	var capturedNS string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedNS = r.Header.Get("X-Hermes-Namespace")
+		capturedNS = r.Header.Get("X-Hermes-Region")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	rt := &NamespaceOnly{Namespace: "production", Base: http.DefaultTransport}
+	rt := &RegionOnly{Region: "production", Base: http.DefaultTransport}
 	client := &http.Client{Transport: rt}
 
 	req, _ := http.NewRequest("GET", server.URL+"/api/v1/config", nil)
@@ -111,7 +111,7 @@ func TestNamespaceOnly_SetsHeader(t *testing.T) {
 	assert.Equal(t, "production", capturedNS)
 }
 
-func TestNamespaceOnly_DoesNotSetAuth(t *testing.T) {
+func TestRegionOnly_DoesNotSetAuth(t *testing.T) {
 	var capturedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAuth = r.Header.Get("Authorization")
@@ -119,7 +119,7 @@ func TestNamespaceOnly_DoesNotSetAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
-	rt := &NamespaceOnly{Namespace: "test", Base: http.DefaultTransport}
+	rt := &RegionOnly{Region: "test", Base: http.DefaultTransport}
 	client := &http.Client{Transport: rt}
 
 	req, _ := http.NewRequest("GET", server.URL+"/test", nil)
@@ -127,5 +127,5 @@ func TestNamespaceOnly_DoesNotSetAuth(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Empty(t, capturedAuth, "NamespaceOnly should not set Authorization")
+	assert.Empty(t, capturedAuth, "RegionOnly should not set Authorization")
 }

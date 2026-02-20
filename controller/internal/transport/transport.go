@@ -14,12 +14,12 @@ import (
 
 // HMACSigning is an http.RoundTripper that signs every outgoing
 // request with HMAC-SHA256(SK, METHOD + "\n" + PATH + "\n" + TIMESTAMP + "\n" + BODY_HASH)
-// and sets the X-Hermes-Namespace header for namespace-scoped API access.
+// and sets the X-Hermes-Region header for region-scoped API access.
 type HMACSigning struct {
-	AK        string
-	SK        string
-	Namespace string
-	Base      http.RoundTripper
+	AK     string
+	SK     string
+	Region string
+	Base   http.RoundTripper
 }
 
 func (t *HMACSigning) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -51,22 +51,22 @@ func (t *HMACSigning) RoundTrip(req *http.Request) (*http.Response, error) {
 	req2.Header.Set("Authorization", fmt.Sprintf("HMAC-SHA256 Credential=%s, Signature=%s", t.AK, sig))
 	req2.Header.Set("X-Hermes-Timestamp", ts)
 	req2.Header.Set("X-Hermes-Body-SHA256", bodyHash)
-	if t.Namespace != "" {
-		req2.Header.Set("X-Hermes-Namespace", t.Namespace)
+	if t.Region != "" {
+		req2.Header.Set("X-Hermes-Region", t.Region)
 	}
 
 	return t.Base.RoundTrip(req2)
 }
 
-// NamespaceOnly sets the X-Hermes-Namespace header without HMAC signing.
-type NamespaceOnly struct {
-	Namespace string
-	Base      http.RoundTripper
+// RegionOnly sets the X-Hermes-Region header without HMAC signing.
+type RegionOnly struct {
+	Region string
+	Base   http.RoundTripper
 }
 
-func (t *NamespaceOnly) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *RegionOnly) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid mutating the caller's original.
 	req2 := req.Clone(req.Context())
-	req2.Header.Set("X-Hermes-Namespace", t.Namespace)
+	req2.Header.Set("X-Hermes-Region", t.Region)
 	return t.Base.RoundTrip(req2)
 }

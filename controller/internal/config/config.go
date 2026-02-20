@@ -20,7 +20,7 @@ type ControlPlaneConfig struct {
 	URL               string `yaml:"url"`                // e.g. "http://hermes-controlplane:9080"
 	PollInterval      int    `yaml:"poll_interval"`      // seconds, for fallback if long-poll fails
 	ReconcileInterval int    `yaml:"reconcile_interval"` // seconds, periodic full reconciliation (default 60)
-	Namespace         string `yaml:"namespace"`          // namespace to pull config from (default "default")
+	Region            string `yaml:"region"`             // region to pull config from (default "default")
 }
 
 // AuthConfig holds AK/SK for HMAC-SHA256 authentication to the control plane.
@@ -56,7 +56,7 @@ func Load(path string) (*Config, error) {
 			URL:               "http://127.0.0.1:9080",
 			PollInterval:      5,
 			ReconcileInterval: 60,
-			Namespace:         "default",
+			Region:            "default",
 		},
 		Etcd: EtcdConfig{
 			Endpoints:      []string{"http://127.0.0.1:2379"},
@@ -95,8 +95,8 @@ func Load(path string) (*Config, error) {
 			cfg.ControlPlane.ReconcileInterval = n
 		}
 	}
-	if v := os.Getenv("HERMES_CONTROLPLANE_NAMESPACE"); v != "" {
-		cfg.ControlPlane.Namespace = v
+	if v := os.Getenv("HERMES_CONTROLPLANE_REGION"); v != "" {
+		cfg.ControlPlane.Region = v
 	}
 	if v := os.Getenv("HERMES_ETCD_ENDPOINTS"); v != "" {
 		cfg.Etcd.Endpoints = strings.Split(v, ",")
@@ -137,9 +137,9 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	// Ensure namespace always has a value.
-	if cfg.ControlPlane.Namespace == "" {
-		cfg.ControlPlane.Namespace = "default"
+	// Ensure region always has a value.
+	if cfg.ControlPlane.Region == "" {
+		cfg.ControlPlane.Region = "default"
 	}
 	if cfg.Election.Prefix == "" {
 		cfg.Election.Prefix = "/hermes/election"

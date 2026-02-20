@@ -21,11 +21,11 @@ func NewCredentialHandler(s store.Store, logger *zap.SugaredLogger) *CredentialH
 	return &CredentialHandler{store: s, logger: logger}
 }
 
-// ListCredentials returns all API credentials in the current namespace (secret keys are omitted).
+// ListCredentials returns all API credentials in the current region (secret keys are omitted).
 func (h *CredentialHandler) ListCredentials(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
-	creds, err := h.store.ListAPICredentials(r.Context(), ns)
+	creds, err := h.store.ListAPICredentials(r.Context(), region)
 	if err != nil {
 		h.logger.Errorf("list api credentials: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
@@ -37,9 +37,9 @@ func (h *CredentialHandler) ListCredentials(w http.ResponseWriter, r *http.Reque
 	JSON(w, http.StatusOK, map[string]any{"credentials": creds})
 }
 
-// CreateCredential generates a new AK/SK pair and stores it in the current namespace.
+// CreateCredential generates a new AK/SK pair and stores it in the current region.
 func (h *CredentialHandler) CreateCredential(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	body, err := ReadBody(r)
 	if err != nil {
@@ -88,21 +88,21 @@ func (h *CredentialHandler) CreateCredential(w http.ResponseWriter, r *http.Requ
 		Enabled:     true,
 	}
 
-	result, err := h.store.CreateAPICredential(r.Context(), ns, cred)
+	result, err := h.store.CreateAPICredential(r.Context(), region, cred)
 	if err != nil {
 		h.logger.Errorf("create api credential: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("api credential created: ns=%s ak=%s desc=%s scopes=%v", ns, result.AccessKey, result.Description, result.Scopes)
-	_ = h.store.InsertAuditLog(r.Context(), ns, "credential", result.AccessKey, "create", Operator(r))
+	h.logger.Infof("api credential created: ns=%s ak=%s desc=%s scopes=%v", region, result.AccessKey, result.Description, result.Scopes)
+	_ = h.store.InsertAuditLog(r.Context(), region, "credential", result.AccessKey, "create", Operator(r))
 	JSON(w, http.StatusCreated, result)
 }
 
 // UpdateCredential updates description/enabled of an existing credential.
 func (h *CredentialHandler) UpdateCredential(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -150,19 +150,19 @@ func (h *CredentialHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 		Enabled:     enabled,
 	}
 
-	if err := h.store.UpdateAPICredential(r.Context(), ns, cred); err != nil {
+	if err := h.store.UpdateAPICredential(r.Context(), region, cred); err != nil {
 		h.logger.Errorf("update api credential: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	_ = h.store.InsertAuditLog(r.Context(), ns, "credential", idStr, "update", Operator(r))
+	_ = h.store.InsertAuditLog(r.Context(), region, "credential", idStr, "update", Operator(r))
 	JSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 // DeleteCredential deletes an API credential by ID.
 func (h *CredentialHandler) DeleteCredential(w http.ResponseWriter, r *http.Request) {
-	ns := NamespaceFromContext(r.Context())
+	region := RegionFromContext(r.Context())
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -171,14 +171,14 @@ func (h *CredentialHandler) DeleteCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.store.DeleteAPICredential(r.Context(), ns, id); err != nil {
+	if err := h.store.DeleteAPICredential(r.Context(), region, id); err != nil {
 		h.logger.Errorf("delete api credential: %v", err)
 		ErrJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.logger.Infof("api credential deleted: ns=%s id=%d", ns, id)
-	_ = h.store.InsertAuditLog(r.Context(), ns, "credential", idStr, "delete", Operator(r))
+	h.logger.Infof("api credential deleted: ns=%s id=%d", region, id)
+	_ = h.store.InsertAuditLog(r.Context(), region, "credential", idStr, "delete", Operator(r))
 	JSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 

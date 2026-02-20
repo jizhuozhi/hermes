@@ -28,7 +28,7 @@ type PostgresConfig struct {
 // All fields can be overridden by environment variables (OIDC_*).
 type OIDCConfig struct {
 	Enabled      bool   `yaml:"enabled"`
-	Issuer       string `yaml:"issuer"`        // e.g. https://keycloak.example.com/realms/myrealm
+	Issuer       string `yaml:"issuer"` // e.g. https://keycloak.example.com/realms/myrealm
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
 	// InitialAdminUsers is a comma-separated list of OIDC usernames or emails.
